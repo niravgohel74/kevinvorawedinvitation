@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-ivory: #F8F5EF;
+  --bg-warm-white: #FFFCF7;
+  --color-charcoal: #202020;
+  --color-muted-rose: #B58F8F;
+  --color-champagne: #C9B38C;
+  --color-soft-beige: #E9E1D5;
+  --color-gold-deep: #9E814D;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--bg-ivory);
+  color: var(--color-charcoal);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans), sans-serif;
+  background-color: var(--bg-ivory);
+  color: var(--color-charcoal);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom delicate luxury scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8F5EF;
+}
+::-webkit-scrollbar-thumb {
+  background: #C9B38C;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9E814D;
+}
+
+/* Luxury selection color */
+::selection {
+  background-color: #E9E1D5;
+  color: #202020;
+}
+
+/* Subtle editorial paper grain */
+.bg-grain {
+  background-image: radial-gradient(rgba(32, 32, 32, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+/* Gold foil gradient texts */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #7A5C28 0%, #C9B38C 50%, #9E814D 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #D4AF37 0%, #C9B38C 50%, #B89758 100%);
+}
+
+.gold-border-card {
+  border: 1px solid rgba(201, 179, 140, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(201, 179, 140, 0.08);
+}
+
+.gold-border-card:hover {
+  border-color: rgba(201, 179, 140, 0.65);
+}
+
+/* Subtle botanical flourish styling */
+.font-editorial-serif {
+  font-family: var(--font-cormorant), Georgia, serif;
+}
+
+.font-display-serif {
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+@keyframes gentlePulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+.animate-gentle-pulse {
+  animation: gentlePulse 3s ease-in-out infinite;
+}
+
+@keyframes musicBar {
+  0%, 100% {
+    height: 4px;
+  }
+  50% {
+    height: 16px;
+  }
+}
+
+.animate-music-bar-1 {
+  animation: musicBar 1.2s ease-in-out infinite;
+}
+.animate-music-bar-2 {
+  animation: musicBar 0.8s ease-in-out infinite 0.2s;
+}
+.animate-music-bar-3 {
+  animation: musicBar 1.0s ease-in-out infinite 0.4s;
+}
