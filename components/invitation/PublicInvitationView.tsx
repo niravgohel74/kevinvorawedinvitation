@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { WeddingData } from "@/types/wedding";
 import { EnvelopeIntro } from "@/components/invitation/EnvelopeIntro";
 import { HeroSection } from "@/components/invitation/HeroSection";
@@ -26,8 +26,46 @@ export function PublicInvitationView({
   initialData,
   isEmbedPreview = false,
 }: PublicInvitationViewProps) {
-  const [data] = useState<WeddingData>(initialData);
+  const [data, setData] = useState<WeddingData>(initialData);
   const [isOpened, setIsOpened] = useState(isEmbedPreview);
+
+  // Sync active music and latest wedding data dynamically on mount
+  useEffect(() => {
+    // 1. Sync from localStorage if active song was set in Admin on this browser
+    try {
+      const localActiveMusic = localStorage.getItem("wedding_active_music_url");
+      if (localActiveMusic && localActiveMusic !== data.wedding.ambientMusicUrl) {
+        setData((prev) => ({
+          ...prev,
+          wedding: {
+            ...prev.wedding,
+            ambientMusicUrl: localActiveMusic,
+          },
+        }));
+      }
+    } catch {}
+
+    // 2. Fetch fresh wedding data from /api/wedding (picks up Vercel runtime updates)
+    fetch("/api/wedding")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          const freshUrl =
+            (typeof window !== "undefined" && localStorage.getItem("wedding_active_music_url")) ||
+            res.data.wedding?.ambientMusicUrl ||
+            initialData.wedding.ambientMusicUrl;
+
+          setData({
+            ...res.data,
+            wedding: {
+              ...res.data.wedding,
+              ambientMusicUrl: freshUrl,
+            },
+          });
+        }
+      })
+      .catch((e) => console.warn("Background wedding sync:", e));
+  }, []);
 
   const vis = data.sectionVisibility || {
     hero: true,
@@ -64,13 +102,12 @@ export function PublicInvitationView({
         />
       )}
 
-      {/* 3. Floating Music Controller - Starts by default upon opening */}
-      {isOpened && (
-        <MusicPlayer
-          customAudioUrl={data.wedding.ambientMusicUrl}
-          autoStartOnOpen={true}
-        />
-      )}
+      {/* 3. Floating Music Controller - Starts by default upon opening, stays mounted for smooth audio */}
+      <MusicPlayer
+        customAudioUrl={data.wedding.ambientMusicUrl}
+        autoStartOnOpen={isOpened}
+        isVisible={isOpened}
+      />
 
       {/* Main Wedding Content Flow */}
       <div className={`transition-opacity duration-1000 ${isOpened ? "opacity-100" : "opacity-0"}`}>
@@ -110,7 +147,7 @@ export function PublicInvitationView({
 
         {/* 13. Guest Wishes / Guestbook */}
         {vis.wishes !== false && (
-          <WishesSection initialWishes={data.wishes.filter((w) => w.status === "approved")} />
+          <WishesSection initialWishes={(data.wishes || []).filter((w) => w.status === "approved")} />
         )}
 
         {/* 14. Emotional Closing Section */}

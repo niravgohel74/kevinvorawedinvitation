@@ -20,12 +20,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "No file uploaded." }, { status: 400 });
     }
 
-    // Vercel serverless request & response payloads have a strict 4.5MB limit
-    if (file.size > 4.2 * 1024 * 1024) {
+    const isVercel = process.env.VERCEL === "1";
+
+    // Vercel serverless request & response payloads have a strict 4.5MB limit.
+    // In local development, allow up to 35MB for high-fidelity 320kbps full audio tracks.
+    const maxSizeBytes = isVercel ? 4.2 * 1024 * 1024 : 35 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const limitMb = isVercel ? "4.2MB" : "35MB";
       return NextResponse.json(
         {
           success: false,
-          error: `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds 4.2MB limit for Vercel serverless functions. Please use the Audio Trimmer to optimize your clip (<60s) or provide an external URL.`,
+          error: `File size (${sizeMb}MB) exceeds the ${limitMb} limit for ${isVercel ? "Vercel serverless functions" : "upload"}. Please use the Audio Trimmer to optimize your clip or provide an external audio URL.`,
         },
         { status: 413 }
       );
@@ -34,9 +40,8 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const isVercel = process.env.VERCEL === "1";
     if (isVercel) {
-      const mime = file.type || "application/octet-stream";
+      const mime = file.type || "audio/mpeg";
       const base64Data = buffer.toString("base64");
       const dataUri = `data:${mime};base64,${base64Data}`;
       return NextResponse.json({
@@ -51,7 +56,7 @@ export async function POST(req: NextRequest) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    // Clean filename
+    // Clean filename preserving extension
     const cleanName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     const filePath = path.join(uploadsDir, cleanName);
 

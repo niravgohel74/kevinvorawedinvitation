@@ -525,7 +525,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           musicLibrary: updatedList,
           wedding: updated.isActive ? { ...data.wedding, ambientMusicUrl: updated.url } : data.wedding,
         });
-        showToast("Music track updated with trimmed audio!");
+        if (updated.isActive) {
+          try {
+            localStorage.setItem("wedding_active_music_url", updated.url);
+          } catch {}
+        }
+        showToast("Music track updated with studio audio!");
       } else {
         showToast(resJson.error || "Failed to update track");
       }
@@ -634,9 +639,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // If file is > 4MB (Vercel serverless limit), automatically redirect to trimmer
-    if (file.size > 4.2 * 1024 * 1024) {
-      showToast("Audio file is >4MB. Opening trimmer to create an optimized clip...");
+    const isLocalEnv = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+    const maxDirectUploadBytes = isLocalEnv ? 35 * 1024 * 1024 : 4.2 * 1024 * 1024;
+
+    // If file exceeds maximum direct upload, open the Studio Trimmer
+    if (file.size > maxDirectUploadBytes) {
+      showToast("Audio file is large. Opening Studio Trimmer to select your favorite clip...");
       handleOpenTrimmer({
         title: file.name.replace(/\.[^/.]+$/, ""),
         artist: "Uploaded Track",
@@ -706,6 +714,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           musicLibrary: updatedLibrary,
           wedding: { ...data.wedding, ambientMusicUrl: resData.data.url },
         });
+
+        // Instant local sync so live invitation in this browser immediately plays the active track
+        try {
+          localStorage.setItem("wedding_active_music_url", resData.data.url);
+          localStorage.setItem("wedding_active_music_id", id);
+        } catch {}
+
         showToast(`"${resData.data.title}" is now active on the invitation!`);
       }
     } catch {

@@ -270,12 +270,12 @@ export function AudioTrimmerModal({
     setStatusMessage("Decoding audio and trimming clip...");
 
     try {
-      // 1. Slice audio using Web Audio API with downsampling/mono optimization (<3MB)
+      // 1. Slice audio using Web Audio API with Studio Fidelity (32-44.1 kHz Stereo)
       const source = audioFile || audioUrl;
-      const { blob, duration: clipDur, sizeBytes } = await sliceAudioSource(source, startTime, endTime);
+      const { blob, duration: clipDur, sizeBytes, qualityInfo } = await sliceAudioSource(source, startTime, endTime);
 
       const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
-      setStatusMessage(`Optimized clip (${sizeMb} MB). Saving...`);
+      setStatusMessage(`Studio Clip (${sizeMb} MB - ${qualityInfo}). Saving...`);
 
       let finalUrl = "";
 
@@ -337,9 +337,11 @@ export function AudioTrimmerModal({
     try {
       let finalUrl = audioUrl;
       if (audioFile) {
-        if (audioFile.size > 4.2 * 1024 * 1024) {
+        const isLocalEnv = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+        const maxLimit = isLocalEnv ? 35 * 1024 * 1024 : 4.2 * 1024 * 1024;
+        if (audioFile.size > maxLimit) {
           throw new Error(
-            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds Vercel's 4.5MB serverless limit. Please click 'Trim & Set Clip' below to optimize your clip to <2MB, or use a direct web link.`
+            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds serverless limit. Please click 'Trim & Save Song' below to create a studio-quality highlight clip (<4MB), or provide an external audio URL.`
           );
         }
 

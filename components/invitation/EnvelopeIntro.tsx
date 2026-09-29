@@ -44,9 +44,8 @@ export function EnvelopeIntro({
       // fallback
     }
 
-    setTimeout(() => {
-      onOpen();
-    }, 900);
+    // Immediately trigger open callback so user gesture starts music smoothly
+    onOpen();
   };
 
   // Format date nicely e.g. "18 DECEMBER 2026"
@@ -71,7 +70,7 @@ export function EnvelopeIntro({
         initial={{ opacity: 1 }}
         animate={isOpenTriggered ? { opacity: 0, scale: 1.05 } : { opacity: 1, scale: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-[#181818] p-4 sm:p-6"
       >
         {/* Ambient atmospheric backdrop */}

@@ -11,7 +11,7 @@
     "invitationSubtitle": "Two souls, one destiny. We invite you to celebrate our union.",
     "introText": "With grateful hearts and the blessings of our elders, we invite you to join us on our most cherished journey.",
     "closingMessage": "Your love and presence have enriched our lives. We cannot wait to celebrate this milestone together.",
-    "ambientMusicUrl": "/audio/perfect-acoustic.wav",
+    "ambientMusicUrl": "/uploads/1790709544092-trimmed_Maahiya__Full_Video___Rohit_Saraf_Pratibha___Akashdeep_Tushar_Joshi_Neeti_Mohan__The_Revolutionaries____320_Kbps__1790709541517.wav",
     "updatedAt": "2026-09-28T20:50:00.000Z"
   },
   "couple": {
@@ -45,7 +45,7 @@
       "title": "Perfect",
       "artist": "Ed Sheeran (Romantic Acoustic)",
       "url": "/audio/perfect-acoustic.wav",
-      "isActive": true,
+      "isActive": false,
       "addedAt": "2026-09-28T12:00:00.000Z"
     },
     {
@@ -63,6 +63,14 @@
       "url": "/audio/kudmayi.wav",
       "isActive": false,
       "addedAt": "2026-09-28T12:00:00.000Z"
+    },
+    {
+      "title": "Maahiya (Full Video)_ Rohit Saraf,Pratibha _ Akashdeep,Tushar Joshi,Neeti Mohan_ The Revolutionaries - (320 Kbps)",
+      "artist": "Uploaded Track",
+      "url": "/uploads/1790709544092-trimmed_Maahiya__Full_Video___Rohit_Saraf_Pratibha___Akashdeep_Tushar_Joshi_Neeti_Mohan__The_Revolutionaries____320_Kbps__1790709541517.wav",
+      "isActive": true,
+      "id": "music-1790709544911",
+      "addedAt": "2026-09-29T19:19:04.911Z"
     }
   ],
   "story": [
@@ -86,7 +94,7 @@
       "id": "story-3",
       "year": "2025",
       "title": "The Forever Promise",
-      "description": "Under a canopy of starlight in Udaipur, with the serene waters of Lake Pichola murmuring beside us, a quiet question was whispered \u2014 and answered with tears and boundless joy.",
+      "description": "Under a canopy of starlight in Udaipur, with the serene waters of Lake Pichola murmuring beside us, a quiet question was whispered — and answered with tears and boundless joy.",
       "image": "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=900&auto=format&fit=crop",
       "order": 3
     }
@@ -120,7 +128,7 @@
     },
     {
       "id": "event-3",
-      "name": "Sangeet & Royal Soir\u00e9e",
+      "name": "Sangeet & Royal Soirée",
       "date": "17 December 2026",
       "time": "07:30 PM",
       "venue": "Grand Ballroom & Royal Lawns",
