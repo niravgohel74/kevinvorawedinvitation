@@ -1,6 +1,7 @@
 /**
  * Client-side Web Audio Trimmer and WAV Encoder
- * Slices PCM audio in browser without external dependencies.
+ * Slices and optimizes PCM audio in browser without external dependencies.
+ * Automatically downsamples and mixes to mono to stay well under Vercel's 4.5MB payload limit.
  */
 
 export function formatTimeSeconds(seconds: number): string {
@@ -23,17 +24,36 @@ export function parseTimeToSeconds(timeStr: string): number {
 }
 
 /**
- * Encodes an AudioBuffer into standard 16-bit PCM WAV Blob
+ * Converts a Blob or File to a Base64 Data URL in browser memory
  */
-export function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Failed to convert audio to data URL"));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Encodes Float32Array PCM samples into standard 16-bit PCM WAV Blob
+ */
+export function encodePcmWavBlob(
+  samples: Float32Array,
+  sampleRate: number,
+  numChannels: number = 1
+): Blob {
   const format = 1; // PCM
   const bitDepth = 16;
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
-
-  const length = audioBuffer.length * numChannels * bytesPerSample;
+  const length = samples.length * bytesPerSample;
   const buffer = new ArrayBuffer(44 + length);
   const view = new DataView(buffer);
 
@@ -62,26 +82,37 @@ export function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
   writeString(36, "data");
   view.setUint32(40, length, true);
 
-  // Write PCM audio samples (interleaved)
+  // Write 16-bit PCM samples with clipping protection
   let offset = 44;
-  const channels: Float32Array[] = [];
-  for (let ch = 0; ch < numChannels; ch++) {
-    channels.push(audioBuffer.getChannelData(ch));
-  }
-
-  for (let i = 0; i < audioBuffer.length; i++) {
-    for (let ch = 0; ch < numChannels; ch++) {
-      let sample = channels[ch][i];
-      // Clamp between -1.0 and 1.0
-      sample = Math.max(-1, Math.min(1, sample));
-      // Scale to 16-bit signed integer
-      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-      view.setInt16(offset, intSample, true);
-      offset += 2;
-    }
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    const intSample = s < 0 ? s * 0x8000 : s * 0x7fff;
+    view.setInt16(offset, intSample, true);
+    offset += 2;
   }
 
   return new Blob([buffer], { type: "audio/wav" });
+}
+
+/**
+ * Backward compatibility wrapper
+ */
+export function audioBufferToWavBlob(audioBuffer: AudioBuffer): Blob {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  
+  if (numChannels === 1) {
+    return encodePcmWavBlob(audioBuffer.getChannelData(0), sampleRate, 1);
+  }
+
+  // Downmix to mono for size optimization
+  const ch0 = audioBuffer.getChannelData(0);
+  const ch1 = audioBuffer.getChannelData(1);
+  const mono = new Float32Array(audioBuffer.length);
+  for (let i = 0; i < audioBuffer.length; i++) {
+    mono[i] = (ch0[i] + ch1[i]) * 0.5;
+  }
+  return encodePcmWavBlob(mono, sampleRate, 1);
 }
 
 /**
@@ -92,7 +123,6 @@ function decodeAudioSafely(ctx: AudioContext, arrayBuffer: ArrayBuffer): Promise
     // Clone arrayBuffer because decodeAudioData detaches memory in modern specs
     const copy = arrayBuffer.slice(0);
 
-    // Some browsers return a promise, while older ones require callbacks
     const promise = ctx.decodeAudioData(
       copy,
       (decoded) => resolve(decoded),
@@ -106,13 +136,14 @@ function decodeAudioSafely(ctx: AudioContext, arrayBuffer: ArrayBuffer): Promise
 }
 
 /**
- * Slices any audio source (local File or URL) between startSeconds and endSeconds
+ * Slices any audio source (local File or URL) between startSeconds and endSeconds,
+ * downsampling and downmixing to mono to guarantee the output WAV file stays well under 3MB.
  */
 export async function sliceAudioSource(
   sourceUrlOrFile: string | File,
   startSeconds: number,
   endSeconds: number
-): Promise<{ blob: Blob; duration: number }> {
+): Promise<{ blob: Blob; duration: number; sizeBytes: number }> {
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContextClass) {
     throw new Error("Web Audio is not supported in this browser");
@@ -124,7 +155,6 @@ export async function sliceAudioSource(
 
     if (typeof sourceUrlOrFile === "string") {
       let fetchUrl = sourceUrlOrFile;
-      // If external URL, pass through server proxy to bypass CORS
       if (sourceUrlOrFile.startsWith("http://") || sourceUrlOrFile.startsWith("https://")) {
         try {
           const origin = window.location.origin;
@@ -148,30 +178,54 @@ export async function sliceAudioSource(
     }
 
     const decodedBuffer = await decodeAudioSafely(ctx, arrayBuffer);
-    const sampleRate = decodedBuffer.sampleRate;
-    const channels = decodedBuffer.numberOfChannels;
+    const sourceSampleRate = decodedBuffer.sampleRate;
+    const numChannels = decodedBuffer.numberOfChannels;
 
     const clampedStart = Math.max(0, Math.min(startSeconds, decodedBuffer.duration));
-    const clampedEnd = Math.max(clampedStart + 0.5, Math.min(endSeconds, decodedBuffer.duration));
+    // Max 75 seconds clip to guarantee light payload for ambient wedding loops
+    const maxEnd = Math.min(decodedBuffer.duration, clampedStart + 75);
+    const clampedEnd = Math.max(clampedStart + 0.5, Math.min(endSeconds, maxEnd));
+    const sliceDuration = clampedEnd - clampedStart;
 
-    const startSample = Math.floor(clampedStart * sampleRate);
-    const endSample = Math.floor(clampedEnd * sampleRate);
-    const sliceLength = Math.max(1, endSample - startSample);
+    // Determine target sample rate: 22,050 Hz is crystal clear for web audio and very lightweight
+    let targetSampleRate = 22050;
+    if (sliceDuration <= 45) {
+      targetSampleRate = 24000; // ~48KB/s -> ~2.1MB for 45s
+    } else if (sliceDuration > 60) {
+      targetSampleRate = 16000; // ~32KB/s -> ~2.4MB for 75s
+    }
 
-    const trimmedBuffer = ctx.createBuffer(channels, sliceLength, sampleRate);
+    const targetLength = Math.max(1, Math.floor(sliceDuration * targetSampleRate));
+    const monoData = new Float32Array(targetLength);
 
-    for (let ch = 0; ch < channels; ch++) {
-      const sourceChannel = decodedBuffer.getChannelData(ch);
-      const targetChannel = trimmedBuffer.getChannelData(ch);
-      for (let i = 0; i < sliceLength; i++) {
-        targetChannel[i] = sourceChannel[startSample + i];
+    const ch0 = decodedBuffer.getChannelData(0);
+    const ch1 = numChannels > 1 ? decodedBuffer.getChannelData(1) : null;
+
+    const sourceStartIndex = clampedStart * sourceSampleRate;
+    const step = (sliceDuration * sourceSampleRate) / targetLength;
+
+    // Resample with linear interpolation and mixdown to mono
+    for (let i = 0; i < targetLength; i++) {
+      const srcPos = sourceStartIndex + i * step;
+      const idx0 = Math.floor(srcPos);
+      const idx1 = Math.min(idx0 + 1, decodedBuffer.length - 1);
+      const frac = srcPos - idx0;
+
+      const s0 = (ch0[idx0] || 0) * (1 - frac) + (ch0[idx1] || 0) * frac;
+      if (ch1) {
+        const s1 = (ch1[idx0] || 0) * (1 - frac) + (ch1[idx1] || 0) * frac;
+        monoData[i] = (s0 + s1) * 0.5;
+      } else {
+        monoData[i] = s0;
       }
     }
 
-    const wavBlob = audioBufferToWavBlob(trimmedBuffer);
+    const wavBlob = encodePcmWavBlob(monoData, targetSampleRate, 1);
+
     return {
       blob: wavBlob,
-      duration: trimmedBuffer.duration,
+      duration: sliceDuration,
+      sizeBytes: wavBlob.size,
     };
   } finally {
     if (ctx.state !== "closed") {

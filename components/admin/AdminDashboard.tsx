@@ -53,6 +53,8 @@ import {
 import { PublicInvitationView } from "@/components/invitation/PublicInvitationView";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { AudioTrimmerModal } from "@/components/admin/AudioTrimmerModal";
+import { safeFetchJson } from "@/lib/apiHelper";
+import { blobToDataUrl } from "@/lib/audioTrimmer";
 import { ShagunDeleteModal } from "@/components/admin/ShagunDeleteModal";
 
 interface AdminDashboardProps {
@@ -632,6 +634,18 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // If file is > 4MB (Vercel serverless limit), automatically redirect to trimmer
+    if (file.size > 4.2 * 1024 * 1024) {
+      showToast("Audio file is >4MB. Opening trimmer to create an optimized clip...");
+      handleOpenTrimmer({
+        title: file.name.replace(/\.[^/.]+$/, ""),
+        artist: "Uploaded Track",
+        url: URL.createObjectURL(file),
+        isActive: false,
+      });
+      return;
+    }
+
     setUploadingAudio(true);
     try {
       const formData = new FormData();
@@ -641,7 +655,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         method: "POST",
         body: formData,
       });
-      const resData = await res.json();
+      const resData = await safeFetchJson(res, "audio upload");
       if (resData.success) {
         setNewMusic({
           ...newMusic,
@@ -653,8 +667,22 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       } else {
         showToast(resData.error || "File upload failed.");
       }
-    } catch {
-      showToast("Upload failed. Please check file format.");
+    } catch (err: any) {
+      // Fallback for smaller files
+      if (file.size <= 3 * 1024 * 1024) {
+        try {
+          const dataUrl = await blobToDataUrl(file);
+          setNewMusic({
+            ...newMusic,
+            title: file.name.replace(/\.[^/.]+$/, ""),
+            artist: "Uploaded Audio",
+            url: dataUrl,
+          });
+          showToast("Audio file attached successfully!");
+          return;
+        } catch {}
+      }
+      showToast(err?.message || "Upload failed. Please use the Audio Trimmer.");
     } finally {
       setUploadingAudio(false);
     }

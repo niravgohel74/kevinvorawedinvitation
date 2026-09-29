@@ -3,6 +3,9 @@ import fs from "fs";
 import path from "path";
 import { isAuthenticated } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const authed = await isAuthenticated();
@@ -15,6 +18,17 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ success: false, error: "No file uploaded." }, { status: 400 });
+    }
+
+    // Vercel serverless request & response payloads have a strict 4.5MB limit
+    if (file.size > 4.2 * 1024 * 1024) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds 4.2MB limit for Vercel serverless functions. Please use the Audio Trimmer to optimize your clip (<60s) or provide an external URL.`,
+        },
+        { status: 413 }
+      );
     }
 
     const bytes = await file.arrayBuffer();

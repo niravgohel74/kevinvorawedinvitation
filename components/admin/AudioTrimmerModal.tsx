@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { MusicTrack } from "@/types/wedding";
-import { formatTimeSeconds, sliceAudioSource } from "@/lib/audioTrimmer";
+import { formatTimeSeconds, sliceAudioSource, blobToDataUrl } from "@/lib/audioTrimmer";
+import { safeFetchJson } from "@/lib/apiHelper";
 import {
   Scissors,
   Play,
@@ -269,35 +270,50 @@ export function AudioTrimmerModal({
     setStatusMessage("Decoding audio and trimming clip...");
 
     try {
-      // 1. Slice audio using Web Audio API
+      // 1. Slice audio using Web Audio API with downsampling/mono optimization (<3MB)
       const source = audioFile || audioUrl;
-      const { blob } = await sliceAudioSource(source, startTime, endTime);
+      const { blob, duration: clipDur, sizeBytes } = await sliceAudioSource(source, startTime, endTime);
 
-      setStatusMessage("Uploading trimmed audio to wedding server...");
+      const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+      setStatusMessage(`Optimized clip (${sizeMb} MB). Saving...`);
 
-      // 2. Upload trimmed WAV blob to /api/upload
-      const formData = new FormData();
-      const cleanFileName = `trimmed_${title.trim().replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.wav`;
-      formData.append("file", blob, cleanFileName);
+      let finalUrl = "";
 
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      // 2. Try direct upload if under 4MB
+      if (blob.size <= 4 * 1024 * 1024) {
+        try {
+          const formData = new FormData();
+          const cleanFileName = `trimmed_${title.trim().replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.wav`;
+          formData.append("file", blob, cleanFileName);
 
-      const uploadJson = await uploadRes.json();
-      if (!uploadJson.success || !uploadJson.url) {
-        throw new Error(uploadJson.error || "Failed to upload trimmed file");
+          const uploadRes = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          const uploadJson = await safeFetchJson(uploadRes, "trimmed audio upload");
+          if (uploadJson.success && uploadJson.url) {
+            finalUrl = uploadJson.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Direct /api/upload failed, using local Data URL fallback:", uploadErr);
+        }
+      }
+
+      // 3. Fallback: If upload endpoint failed on Vercel, convert blob directly to Data URL in browser
+      if (!finalUrl) {
+        setStatusMessage("Converting audio for instant playback...");
+        finalUrl = await blobToDataUrl(blob);
       }
 
       setStatusMessage("Saving track in wedding music library...");
 
-      // 3. Save track
+      // 4. Save track
       await onSave({
         id: track?.id,
         title: title.trim(),
         artist: artist.trim() || "Wedding Music",
-        url: uploadJson.url,
+        url: finalUrl,
         isActive: track?.isActive,
       });
 
@@ -321,18 +337,28 @@ export function AudioTrimmerModal({
     try {
       let finalUrl = audioUrl;
       if (audioFile) {
-        setStatusMessage("Uploading audio file to server...");
-        const formData = new FormData();
-        formData.append("file", audioFile);
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        const uploadJson = await uploadRes.json();
-        if (!uploadJson.success || !uploadJson.url) {
-          throw new Error(uploadJson.error || "Failed to upload audio file");
+        if (audioFile.size > 4.2 * 1024 * 1024) {
+          throw new Error(
+            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds Vercel's 4.5MB serverless limit. Please click 'Trim & Set Clip' below to optimize your clip to <2MB, or use a direct web link.`
+          );
         }
-        finalUrl = uploadJson.url;
+
+        setStatusMessage("Uploading audio file to server...");
+        try {
+          const formData = new FormData();
+          formData.append("file", audioFile);
+          const uploadRes = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
+          const uploadJson = await safeFetchJson(uploadRes, "audio file upload");
+          if (uploadJson.success && uploadJson.url) {
+            finalUrl = uploadJson.url;
+          }
+        } catch (uploadErr) {
+          console.warn("Direct upload failed, falling back to data URL:", uploadErr);
+          finalUrl = await blobToDataUrl(audioFile);
+        }
       }
 
       if (finalUrl.startsWith("blob:")) {

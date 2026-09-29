@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef } from "react";
 import { Upload, Image as ImageIcon, Check, Loader2, X, ExternalLink } from "lucide-react";
+import { safeFetchJson } from "@/lib/apiHelper";
 
 interface ImageUploadFieldProps {
   label: string;
@@ -33,6 +34,10 @@ export function ImageUploadField({
     setUploadSuccess(false);
 
     try {
+      if (file.size > 4.2 * 1024 * 1024) {
+        throw new Error(`Image (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds 4MB limit. Please compress or use an external URL.`);
+      }
+
       const formData = new FormData();
       formData.append("file", file);
 
@@ -41,7 +46,7 @@ export function ImageUploadField({
         body: formData,
       });
 
-      const resData = await res.json();
+      const resData = await safeFetchJson(res, "image upload");
       if (resData.success && resData.url) {
         onChange(resData.url);
         setUploadSuccess(true);
