@@ -22,7 +22,7 @@ export function HeroSection({ wedding }: HeroSectionProps) {
           src={wedding.heroImage || "https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1600&auto=format&fit=crop"}
           alt={`${wedding.brideName} and ${wedding.groomName}`}
           fill
-          priority
+          loading="eager"
           sizes="100vw"
           className="object-cover object-center scale-105 filter brightness-[0.72] contrast-[1.05]"
         />

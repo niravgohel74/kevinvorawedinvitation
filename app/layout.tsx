@@ -31,21 +31,33 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-export async function generateMetadata(): Promise<Metadata> {
-  const headersList = headers();
-  const host = headersList.get("x-forwarded-host") || headersList.get("host") || "localhost:3000";
-  const proto = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  const siteUrl = `${proto}://${host}`;
+const SITE_TITLE = "Kevin & Moksha | Royal Wedding Celebration";
+const SITE_DESC = "Join us to celebrate the royal wedding of Kevin & Moksha on Friday, December 18, 2026 at The Leela Palace, Udaipur.";
+const PROD_URL = "https://kevin-moksha-wedding-invitation.vercel.app";
 
-  const title = "Kevin & Moksha | Royal Wedding Celebration";
-  const description = "Join us to celebrate the wedding of Kevin & Moksha. Friday, Dec 18, 2026 • The Leela Palace, Udaipur.";
+function getSiteUrl(): string {
+  try {
+    const headersList = headers();
+    const host = headersList.get("x-forwarded-host") || headersList.get("host") || "";
+    if (host.includes("localhost") || host.includes("127.0.0.1")) {
+      const proto = headersList.get("x-forwarded-proto") || "http";
+      return `${proto}://${host}`;
+    }
+  } catch {
+    // fallback
+  }
+  return PROD_URL;
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const siteUrl = getSiteUrl();
   const ogImageUrl = `${siteUrl}/og-image.jpg`;
 
   return {
     metadataBase: new URL(siteUrl),
-    title,
-    description,
-    keywords: ["Kevin and Moksha", "Wedding Invitation", "Udaipur Wedding", "The Leela Palace"],
+    title: SITE_TITLE,
+    description: SITE_DESC,
+    keywords: ["Kevin and Moksha", "Wedding Invitation", "Udaipur Wedding", "The Leela Palace", "Kevin Vora"],
     authors: [{ name: "Kevin & Moksha" }],
     icons: {
       icon: [
@@ -57,8 +69,8 @@ export async function generateMetadata(): Promise<Metadata> {
       apple: "/icon.svg",
     },
     openGraph: {
-      title,
-      description,
+      title: SITE_TITLE,
+      description: SITE_DESC,
       url: siteUrl,
       siteName: "Kevin & Moksha Wedding",
       images: [
@@ -76,8 +88,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description,
+      title: SITE_TITLE,
+      description: SITE_DESC,
       images: [ogImageUrl],
     },
   };
@@ -88,16 +100,20 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const headersList = headers();
-  const host = headersList.get("x-forwarded-host") || headersList.get("host") || "localhost:3000";
-  const proto = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  const siteUrl = `${proto}://${host}`;
+  const siteUrl = getSiteUrl();
   const ogImageUrl = `${siteUrl}/og-image.jpg`;
 
   return (
     <html lang="en" className={`${cormorant.variable} ${playfair.variable} ${jakarta.variable}`}>
       <head>
-        {/* Explicit fallback meta tags for WhatsApp, iMessage, Facebook, and Telegram */}
+        {/* Core meta and direct tags placed at top of head for fastest crawler detection */}
+        <title>{SITE_TITLE}</title>
+        <meta name="description" content={SITE_DESC} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Kevin & Moksha Wedding" />
+        <meta property="og:url" content={siteUrl} />
+        <meta property="og:title" content={SITE_TITLE} />
+        <meta property="og:description" content={SITE_DESC} />
         <meta property="og:image" content={ogImageUrl} />
         <meta property="og:image:secure_url" content={ogImageUrl} />
         <meta property="og:image:type" content="image/jpeg" />
@@ -105,6 +121,10 @@ export default function RootLayout({
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content="Kevin & Moksha Royal Wedding Invitation" />
         <link rel="image_src" href={ogImageUrl} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={SITE_TITLE} />
+        <meta name="twitter:description" content={SITE_DESC} />
+        <meta name="twitter:image" content={ogImageUrl} />
       </head>
       <body className="antialiased min-h-screen selection:bg-[#E9E1D5] selection:text-[#202020] bg-[#F8F5EF] text-[#202020]">
         {children}
