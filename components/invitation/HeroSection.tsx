@@ -14,21 +14,6 @@ export function HeroSection({ wedding }: HeroSectionProps) {
   const y = useTransform(scrollY, [0, 600], [0, 160]);
   const opacity = useTransform(scrollY, [0, 450], [1, 0.2]);
 
-  const formattedDate = React.useMemo(() => {
-    try {
-      if (!wedding.weddingDate) return "DECEMBER 2026";
-      const d = new Date(wedding.weddingDate);
-      if (isNaN(d.getTime())) return wedding.weddingDate.toUpperCase();
-      return d.toLocaleDateString("en-US", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).toUpperCase();
-    } catch {
-      return wedding.weddingDate;
-    }
-  }, [wedding.weddingDate]);
-
   return (
     <section className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-[#161514] text-[#FAF8F5]">
       {/* Background Image with Parallax */}
@@ -57,7 +42,7 @@ export function HeroSection({ wedding }: HeroSectionProps) {
         <BotanicalMotif variant="flourish" className="w-24 text-[#C9B38C] rotate-180" />
       </div>
 
-      {/* Main Content Content */}
+      {/* Main Content */}
       <motion.div
         style={{ opacity }}
         initial={{ opacity: 0, y: 30 }}
@@ -96,14 +81,21 @@ export function HeroSection({ wedding }: HeroSectionProps) {
           </h1>
         </div>
 
-        {/* Tagline */}
-        <div className="pt-2 sm:pt-4 max-w-lg mx-auto">
+                {/* Romantic Couple Quote / Line (Fully Editable from Admin) */}
+        <div className="pt-2 sm:pt-4 max-w-xl mx-auto space-y-3">
           <p className="font-editorial-serif text-xl sm:text-2xl md:text-3xl italic tracking-wider text-[#E8DEC8]">
-            Two Stories, One Chapter
+            {wedding.invitationSubtitle || "Two Stories, One Chapter"}
           </p>
-          <p className="text-xs sm:text-sm tracking-[0.2em] uppercase text-[#BFB5A3] mt-2">
-            {formattedDate} • {wedding.city}
+          <p className="font-serif italic text-sm sm:text-base text-[#D8CFBE]/90 tracking-wide leading-relaxed font-light px-4">
+            &ldquo;{wedding.heroQuote || "In the quiet rhythm of our laughter and in every shared dream, we found our forever."}&rdquo;
           </p>
+          <div className="flex items-center justify-center gap-3 pt-1">
+            <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
+            <span className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase text-[#C9B38C] font-medium">
+              {wedding.heroTagline || "Two Souls • One Heartbeat"}
+            </span>
+            <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
+          </div>
         </div>
 
         {/* Scroll Indicator */}

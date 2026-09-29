@@ -11,6 +11,8 @@ export const initialWeddingData: WeddingData = {
     hashtag: "#AaravWedsMeera",
     heroImage: "https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1600&auto=format&fit=crop",
     invitationSubtitle: "Two souls, one destiny. We invite you to celebrate our union.",
+    heroQuote: "In the quiet rhythm of our laughter and in every shared dream, we found our forever.",
+    heroTagline: "Two Souls • One Heartbeat",
     introText: "With grateful hearts and the blessings of our elders, we invite you to join us on our most cherished journey.",
     closingMessage: "Your love and presence have enriched our lives. We cannot wait to celebrate this milestone together.",
     ambientMusicUrl: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=acoustic-guitar-love-melody-110855.mp3",
@@ -30,6 +32,7 @@ export const initialWeddingData: WeddingData = {
   },
   sectionVisibility: {
     hero: true,
+    dateReveal: true,
     countdown: true,
     story: true,
     couple: true,

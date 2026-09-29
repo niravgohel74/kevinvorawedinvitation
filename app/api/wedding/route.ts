@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getWeddingData, updateWeddingDetails } from "@/lib/db";
+import { getWeddingData, updateWeddingDetails, restoreWeddingData } from "@/lib/db";
 import { isAuthenticated } from "@/lib/auth";
 
 export async function GET() {
@@ -23,5 +23,20 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, data: updated });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to update wedding details" }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const authed = await isAuthenticated();
+    if (!authed) {
+      return NextResponse.json({ success: false, error: "Unauthorized access" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const restored = await restoreWeddingData(body);
+    return NextResponse.json({ success: true, data: restored });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err?.message || "Failed to restore wedding data" }, { status: 500 });
   }
 }

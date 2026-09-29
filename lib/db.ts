@@ -90,6 +90,15 @@ function saveStore(data: WeddingData): void {
     const tempPath = `${STORE_PATH}.tmp`;
     fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), "utf-8");
     fs.renameSync(tempPath, STORE_PATH);
+    if (isVercel) {
+      try {
+        if (fs.existsSync(REPO_STORE_PATH)) {
+          fs.writeFileSync(REPO_STORE_PATH, JSON.stringify(data, null, 2), "utf-8");
+        }
+      } catch (repoWriteErr) {
+        // Ignored on read-only serverless environments
+      }
+    }
   } catch (err) {
     console.error("Error saving wedding-store.json:", err);
     try {
@@ -403,3 +412,31 @@ export async function deleteMusicTrack(id: string): Promise<boolean> {
   return true;
 }
 
+export async function restoreWeddingData(fullData: WeddingData): Promise<WeddingData> {
+  const current = ensureStore();
+  const merged: WeddingData = {
+    ...current,
+    ...fullData,
+    wedding: {
+      ...current.wedding,
+      ...(fullData.wedding || {}),
+      updatedAt: new Date().toISOString(),
+    },
+    couple: {
+      ...current.couple,
+      ...(fullData.couple || {}),
+    },
+    family: {
+      ...current.family,
+      ...(fullData.family || {}),
+    },
+    sectionVisibility: {
+      ...current.sectionVisibility,
+      ...(fullData.sectionVisibility || {}),
+    },
+    shagun: fullData.shagun || current.shagun,
+    musicLibrary: fullData.musicLibrary || current.musicLibrary,
+  };
+  saveStore(merged);
+  return merged;
+}

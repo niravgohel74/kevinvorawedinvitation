@@ -1,5 +1,6 @@
 export interface SectionVisibility {
   hero: boolean;
+  dateReveal?: boolean;
   countdown: boolean;
   story: boolean;
   couple: boolean;
@@ -22,6 +23,8 @@ export interface WeddingDetails {
   hashtag: string;
   heroImage: string;
   invitationSubtitle: string;
+  heroQuote?: string;
+  heroTagline?: string;
   introText: string;
   closingMessage: string;
   ambientMusicUrl?: string;

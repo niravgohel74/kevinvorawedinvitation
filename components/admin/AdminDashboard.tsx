@@ -97,6 +97,38 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     notes: "",
   });
 
+  // Helper to persist backup locally in browser storage for instant preview hydration
+  const persistLocalBackup = (updated: WeddingData) => {
+    try {
+      localStorage.setItem("wedding_live_data", JSON.stringify(updated));
+    } catch (err) {
+      console.warn("Could not save to localStorage:", err);
+    }
+  };
+
+  // Hydrate local cache on mount
+  React.useEffect(() => {
+    try {
+      const cached = localStorage.getItem("wedding_live_data");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.wedding) {
+          setData((prev) => ({
+            ...prev,
+            ...parsed,
+            wedding: {
+              ...prev.wedding,
+              ...parsed.wedding,
+            },
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn("Mount cache error:", e);
+    }
+  }, []);
+
+
   // State for Add Event Form
   const [newEventModal, setNewEventModal] = useState(false);
   const [newEvent, setNewEvent] = useState<Partial<WeddingEvent>>({
@@ -163,6 +195,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        persistLocalBackup(data);
         showToast("Wedding details successfully updated!");
       }
     } catch {
@@ -183,6 +216,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        persistLocalBackup(data);
         showToast("Couple profile updated successfully!");
       }
     } catch {
@@ -223,6 +257,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        persistLocalBackup(data);
         showToast("Family blessings saved!");
       }
     } catch {
@@ -241,6 +276,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         body: JSON.stringify(data.sectionVisibility),
       });
       if (res.ok) {
+        persistLocalBackup(data);
         showToast("Section visibility preferences saved!");
       }
     } catch {
@@ -862,6 +898,57 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     { id: "wishes", label: `Wishes (${data.wishes.filter((w) => w.status === "pending").length} pending)`, icon: MessageSquareHeart },
   ];
 
+  
+  // Export full wedding store as JSON file
+  const handleExportFullJson = () => {
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `wedding-store-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast("Full wedding data backup downloaded!");
+  };
+
+  // Restore full wedding store from uploaded JSON file
+  const handleImportJsonFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target?.result as string);
+        if (!parsed.wedding || !parsed.couple) {
+          alert("Invalid wedding store JSON file. Missing wedding or couple root keys.");
+          return;
+        }
+        setIsSaving(true);
+        const res = await fetch("/api/wedding", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed),
+        });
+        const resData = await res.json();
+        if (resData.success && resData.data) {
+          setData(resData.data);
+          persistLocalBackup(resData.data);
+          showToast("Wedding store restored successfully from JSON backup!");
+        } else {
+          alert(resData.error || "Failed to restore backup.");
+        }
+      } catch (err: any) {
+        alert("Failed to parse JSON file: " + (err?.message || err));
+      } finally {
+        setIsSaving(false);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#202020] flex flex-col">
       {/* Top Navbar */}
@@ -925,7 +1012,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       </header>
 
       {/* Main Body */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Sidebar */}
         <aside className="w-64 bg-[#FFFFFF] border-r border-[#E9E1D5] flex flex-col justify-between shrink-0 hidden md:flex">
           <div className="p-4 space-y-1 overflow-y-auto">
@@ -960,7 +1047,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         </aside>
 
         {/* Mobile Horizontal Tab Navigation */}
-        <div className="md:hidden flex overflow-x-auto bg-white border-b border-[#E9E1D5] p-2 gap-2 sticky top-[57px] z-20">
+        <div className="md:hidden w-full shrink-0 flex overflow-x-auto bg-white border-b border-[#E9E1D5] p-2 gap-2 sticky top-[57px] z-20 scrollbar-none shadow-xs">
           {navTabs.map((tab) => (
             <button
               key={tab.id}
@@ -1087,7 +1174,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
                 <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-4">
                   {[
-                    { key: "hero" as keyof SectionVisibility, title: "Hero Section", desc: "Large cinematic portrait, couple names, and date" },
+                    { key: "hero" as keyof SectionVisibility, title: "Hero Section", desc: "Large cinematic portrait, couple names, and romantic quote" },
+                    { key: "dateReveal" as keyof SectionVisibility, title: "Royal Date Reveal & Palace Gate", desc: "Interactive scroll-triggered palace gate uncurtaining the wedding date and Muhurat" },
                     { key: "countdown" as keyof SectionVisibility, title: "Live Countdown Timer", desc: "Real-time countdown until wedding day" },
                     { key: "story" as keyof SectionVisibility, title: "Our Story & Couple Profiles", desc: "Relationship timeline milestones and bride & groom bios" },
                     { key: "events" as keyof SectionVisibility, title: "Celebration Events (Haldi, Mehendi, etc.)", desc: "Event dates, timings, dress codes, and calendar links" },
@@ -1842,6 +1930,54 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                       value={data.wedding.hashtag}
                       onChange={(e) =>
                         setData({ ...data, wedding: { ...data.wedding, hashtag: e.target.value } })
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
+                    />
+                  </div>
+
+                  {/* Hero Quotations & Taglines */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
+                        Hero Subtitle / Headline
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Two Stories, One Chapter"
+                        value={data.wedding.invitationSubtitle || ""}
+                        onChange={(e) =>
+                          setData({ ...data, wedding: { ...data.wedding, invitationSubtitle: e.target.value } })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
+                        Couple Micro-Tagline
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Two Souls • One Heartbeat"
+                        value={data.wedding.heroTagline || ""}
+                        onChange={(e) =>
+                          setData({ ...data, wedding: { ...data.wedding, heroTagline: e.target.value } })
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
+                      Hero Romantic Couple Quote (Displayed Beneath Names)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. In the quiet rhythm of our laughter and in every shared dream, we found our forever."
+                      value={data.wedding.heroQuote || ""}
+                      onChange={(e) =>
+                        setData({ ...data, wedding: { ...data.wedding, heroQuote: e.target.value } })
                       }
                       className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
                     />

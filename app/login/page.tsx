@@ -99,7 +99,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter username"
-              className="w-full px-4 py-3 rounded-xl bg-[#2A2622] border border-[#C9B38C]/30 text-white placeholder-[#736B63] text-sm focus:outline-none focus:ring-2 focus:ring-[#C9B38C]/60 transition-all"
+              className="w-full px-4 py-3 rounded-xl bg-[#2A2622] border border-[#C9B38C]/30 text-white placeholder-[#736B63] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#C9B38C]/60 transition-all"
             />
           </div>
 
@@ -114,7 +114,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full px-4 py-3 rounded-xl bg-[#2A2622] border border-[#C9B38C]/30 text-white placeholder-[#736B63] text-sm focus:outline-none focus:ring-2 focus:ring-[#C9B38C]/60 transition-all pr-10"
+                className="w-full px-4 py-3 rounded-xl bg-[#2A2622] border border-[#C9B38C]/30 text-white placeholder-[#736B63] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#C9B38C]/60 transition-all pr-10"
               />
               <button
                 type="button"

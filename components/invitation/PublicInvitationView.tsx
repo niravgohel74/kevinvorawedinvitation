@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { WeddingData } from "@/types/wedding";
 import { EnvelopeIntro } from "@/components/invitation/EnvelopeIntro";
 import { HeroSection } from "@/components/invitation/HeroSection";
+import { DateRevealSection } from "@/components/invitation/DateRevealSection";
 import { StorySection } from "@/components/invitation/StorySection";
 import { CountdownSection } from "@/components/invitation/CountdownSection";
 import { EventsSection } from "@/components/invitation/EventsSection";
@@ -31,10 +32,24 @@ export function PublicInvitationView({
 
   // Sync active music and latest wedding data dynamically on mount
   useEffect(() => {
-    // 1. Sync from localStorage if active song was set in Admin on this browser
+    // 1. Instant hydration from localStorage if cached from Admin
     try {
+      const cached = localStorage.getItem("wedding_live_data");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.wedding) {
+          setData((prev) => ({
+            ...prev,
+            ...parsed,
+            wedding: {
+              ...prev.wedding,
+              ...parsed.wedding,
+            },
+          }));
+        }
+      }
       const localActiveMusic = localStorage.getItem("wedding_active_music_url");
-      if (localActiveMusic && localActiveMusic !== data.wedding.ambientMusicUrl) {
+      if (localActiveMusic) {
         setData((prev) => ({
           ...prev,
           wedding: {
@@ -43,7 +58,9 @@ export function PublicInvitationView({
           },
         }));
       }
-    } catch {}
+    } catch (e) {
+      console.warn("Local storage sync error:", e);
+    }
 
     // 2. Fetch fresh wedding data from /api/wedding (picks up Vercel runtime updates)
     fetch("/api/wedding")
@@ -55,13 +72,17 @@ export function PublicInvitationView({
             res.data.wedding?.ambientMusicUrl ||
             initialData.wedding.ambientMusicUrl;
 
-          setData({
+          const freshData = {
             ...res.data,
             wedding: {
               ...res.data.wedding,
               ambientMusicUrl: freshUrl,
             },
-          });
+          };
+          setData(freshData);
+          try {
+            localStorage.setItem("wedding_live_data", JSON.stringify(freshData));
+          } catch {}
         }
       })
       .catch((e) => console.warn("Background wedding sync:", e));
@@ -69,6 +90,7 @@ export function PublicInvitationView({
 
   const vis = data.sectionVisibility || {
     hero: true,
+    dateReveal: true,
     countdown: true,
     story: true,
     couple: true,
@@ -111,8 +133,11 @@ export function PublicInvitationView({
 
       {/* Main Wedding Content Flow */}
       <div className={`transition-opacity duration-1000 ${isOpened ? "opacity-100" : "opacity-0"}`}>
-        {/* 4. Cinematic Hero with Parallax */}
+        {/* 4. Cinematic Hero with Parallax (Romantic couple quote, no date/location) */}
         {vis.hero !== false && <HeroSection wedding={data.wedding} />}
+
+        {/* 4.5. Romantic Date Reveal Section with 3 Golden Hearts */}
+        {vis.dateReveal !== false && <DateRevealSection wedding={data.wedding} />}
 
         {/* 5. Countdown Section */}
         {vis.countdown !== false && (
