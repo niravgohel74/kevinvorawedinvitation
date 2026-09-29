@@ -86,7 +86,7 @@
       "id": "story-3",
       "year": "2025",
       "title": "The Forever Promise",
-      "description": "Under a canopy of starlight in Udaipur, with the serene waters of Lake Pichola murmuring beside us, a quiet question was whispered — and answered with tears and boundless joy.",
+      "description": "Under a canopy of starlight in Udaipur, with the serene waters of Lake Pichola murmuring beside us, a quiet question was whispered \u2014 and answered with tears and boundless joy.",
       "image": "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?q=80&w=900&auto=format&fit=crop",
       "order": 3
     }
@@ -101,7 +101,7 @@
       "address": "The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
       "description": "An auspicious morning invoking divine blessings, followed by an intimate ceremony drenched in turmeric sunshine, marigold blooms, and joyous folk laughter.",
       "dressCode": "Sun-drenched Yellows & Festive Florals",
-      "image": "https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1000&auto=format&fit=crop",
+      "image": "/images/events/haldi.jpg",
       "mapsUrl": "https://maps.google.com/?q=The+Leela+Palace+Udaipur",
       "order": 1
     },
@@ -114,20 +114,20 @@
       "address": "The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
       "description": "Intricate henna designs, sweet treats, acoustic tunes, and breezy lake breezes as stories unfold into the dusk.",
       "dressCode": "Pastels, Soft Greens & Mint Hues",
-      "image": "https://images.unsplash.com/photo-1532712938310-34cb3982ef74?q=80&w=1000&auto=format&fit=crop",
+      "image": "/images/events/mehendi.jpg",
       "mapsUrl": "https://maps.google.com/?q=The+Leela+Palace+Udaipur",
       "order": 2
     },
     {
       "id": "event-3",
-      "name": "Sangeet & Royal Soirée",
+      "name": "Sangeet & Royal Soir\u00e9e",
       "date": "17 December 2026",
       "time": "07:30 PM",
       "venue": "Grand Ballroom & Royal Lawns",
       "address": "The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
       "description": "An evening of choreographed dances, soulful performances, heartfelt toasts, and celebration that dances late into the night.",
       "dressCode": "Regal Indian Formals / Sparkles & Velvets",
-      "image": "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?q=80&w=1000&auto=format&fit=crop",
+      "image": "/images/events/sangeet.jpg",
       "mapsUrl": "https://maps.google.com/?q=The+Leela+Palace+Udaipur",
       "order": 3
     },
@@ -140,7 +140,7 @@
       "address": "The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
       "description": "Baraat procession at sunset, followed by sacred vows around the holy fire as twilight settles across the lake.",
       "dressCode": "Traditional Elegance / Ivory, Gold & Heritage Silks",
-      "image": "https://images.unsplash.com/photo-1587271407850-8d438ca9fdf2?q=80&w=1000&auto=format&fit=crop",
+      "image": "/images/events/pheras.jpg",
       "mapsUrl": "https://maps.google.com/?q=The+Leela+Palace+Udaipur",
       "order": 4
     },
@@ -153,7 +153,7 @@
       "address": "The Leela Palace, Lake Pichola, Udaipur, Rajasthan 313001",
       "description": "Join us for our first evening as husband and wife with exquisite Rajasthani and global gastronomy, live strings, and blessings.",
       "dressCode": "Black Tie / Glamorous Indian Couture",
-      "image": "https://images.unsplash.com/photo-1469371670807-013ccf25f16a?q=80&w=1000&auto=format&fit=crop",
+      "image": "/images/events/reception.jpg",
       "mapsUrl": "https://maps.google.com/?q=The+Leela+Palace+Udaipur",
       "order": 5
     }
