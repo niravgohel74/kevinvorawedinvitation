@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import { MusicTrack } from "@/types/wedding";
-import { formatTimeSeconds, sliceAudioSource, blobToDataUrl } from "@/lib/audioTrimmer";
-import { safeFetchJson } from "@/lib/apiHelper";
+import { formatTimeSeconds, sliceAudioSource } from "@/lib/audioTrimmer";
+import { MAX_AUDIO_UPLOAD_BYTES, uploadAudioToStorage } from "@/lib/uploadAudio";
 import {
   Scissors,
   Play,
@@ -277,34 +277,11 @@ export function AudioTrimmerModal({
       const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
       setStatusMessage(`Studio Clip (${sizeMb} MB - ${qualityInfo}). Saving...`);
 
-      let finalUrl = "";
-
-      // 2. Try direct upload if under 4MB
-      if (blob.size <= 4 * 1024 * 1024) {
-        try {
-          const formData = new FormData();
-          const cleanFileName = `trimmed_${title.trim().replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.wav`;
-          formData.append("file", blob, cleanFileName);
-
-          const uploadRes = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
-
-          const uploadJson = await safeFetchJson(uploadRes, "trimmed audio upload");
-          if (uploadJson.success && uploadJson.url) {
-            finalUrl = uploadJson.url;
-          }
-        } catch (uploadErr) {
-          console.warn("Direct /api/upload failed, using local Data URL fallback:", uploadErr);
-        }
-      }
-
-      // 3. Fallback: If upload endpoint failed on Vercel, convert blob directly to Data URL in browser
-      if (!finalUrl) {
-        setStatusMessage("Converting audio for instant playback...");
-        finalUrl = await blobToDataUrl(blob);
-      }
+      // 2. Upload directly from the browser to durable Blob storage on Vercel.
+      // This bypasses the 4.5MB Vercel Function request/response payload limit.
+      setStatusMessage("Uploading trimmed audio to music storage...");
+      const cleanFileName = `trimmed_${title.trim().replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.wav`;
+      const finalUrl = await uploadAudioToStorage(blob, cleanFileName);
 
       setStatusMessage("Saving track in wedding music library...");
 
@@ -337,30 +314,14 @@ export function AudioTrimmerModal({
     try {
       let finalUrl = audioUrl;
       if (audioFile) {
-        const isLocalEnv = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-        const maxLimit = isLocalEnv ? 35 * 1024 * 1024 : 4.2 * 1024 * 1024;
-        if (audioFile.size > maxLimit) {
+        if (audioFile.size > MAX_AUDIO_UPLOAD_BYTES) {
           throw new Error(
-            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds serverless limit. Please click 'Trim & Save Song' below to create a studio-quality highlight clip (<4MB), or provide an external audio URL.`
+            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 50MB upload limit. Please trim the song or provide an external audio URL.`
           );
         }
 
-        setStatusMessage("Uploading audio file to server...");
-        try {
-          const formData = new FormData();
-          formData.append("file", audioFile);
-          const uploadRes = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
-          const uploadJson = await safeFetchJson(uploadRes, "audio file upload");
-          if (uploadJson.success && uploadJson.url) {
-            finalUrl = uploadJson.url;
-          }
-        } catch (uploadErr) {
-          console.warn("Direct upload failed, falling back to data URL:", uploadErr);
-          finalUrl = await blobToDataUrl(audioFile);
-        }
+        setStatusMessage("Uploading audio file to music storage...");
+        finalUrl = await uploadAudioToStorage(audioFile, audioFile.name);
       }
 
       if (finalUrl.startsWith("blob:")) {

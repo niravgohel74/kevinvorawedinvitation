@@ -54,7 +54,7 @@ import { PublicInvitationView } from "@/components/invitation/PublicInvitationVi
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { AudioTrimmerModal } from "@/components/admin/AudioTrimmerModal";
 import { safeFetchJson } from "@/lib/apiHelper";
-import { blobToDataUrl } from "@/lib/audioTrimmer";
+import { MAX_AUDIO_UPLOAD_BYTES, uploadAudioToStorage } from "@/lib/uploadAudio";
 import { ShagunDeleteModal } from "@/components/admin/ShagunDeleteModal";
 
 interface AdminDashboardProps {
@@ -551,7 +551,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           },
         }),
       });
-      const resJson = await res.json();
+      const resJson = await safeFetchJson(res, "music track update");
       if (resJson.success) {
         const updatedList = (data.musicLibrary || []).map((m) =>
           m.id === updated.id ? { ...m, ...resJson.data } : m
@@ -581,7 +581,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           isActive: updated.isActive,
         }),
       });
-      const resJson = await res.json();
+      const resJson = await safeFetchJson(res, "music track creation");
       if (resJson.success) {
         setData({
           ...data,
@@ -655,7 +655,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newMusic),
       });
-      const resData = await res.json();
+      const resData = await safeFetchJson(res, "music track creation");
       if (resData.success) {
         setData({
           ...data,
@@ -666,8 +666,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         setNewMusic({ title: "", artist: "", url: "", isActive: false });
         showToast("Track added to music library!");
       }
-    } catch {
-      showToast("Failed to add music track.");
+    } catch (error: any) {
+      showToast(error?.message || "Failed to add music track.");
     }
   };
 
@@ -675,11 +675,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const isLocalEnv = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-    const maxDirectUploadBytes = isLocalEnv ? 35 * 1024 * 1024 : 4.2 * 1024 * 1024;
-
-    // If file exceeds maximum direct upload, open the Studio Trimmer
-    if (file.size > maxDirectUploadBytes) {
+    // Very large files should be trimmed before uploading to avoid excessive storage and playback cost.
+    if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
       showToast("Audio file is large. Opening Studio Trimmer to select your favorite clip...");
       handleOpenTrimmer({
         title: file.name.replace(/\.[^/.]+$/, ""),
@@ -692,41 +689,16 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
     setUploadingAudio(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
+      const uploadedUrl = await uploadAudioToStorage(file, file.name);
+      setNewMusic({
+        ...newMusic,
+        title: file.name.replace(/\.[^/.]+$/, ""),
+        artist: "Uploaded Audio",
+        url: uploadedUrl,
       });
-      const resData = await safeFetchJson(res, "audio upload");
-      if (resData.success) {
-        setNewMusic({
-          ...newMusic,
-          title: file.name.replace(/\.[^/.]+$/, ""),
-          artist: "Uploaded Audio",
-          url: resData.url,
-        });
-        showToast("Audio file uploaded successfully!");
-      } else {
-        showToast(resData.error || "File upload failed.");
-      }
+      showToast("Audio file uploaded successfully!");
     } catch (err: any) {
-      // Fallback for smaller files
-      if (file.size <= 3 * 1024 * 1024) {
-        try {
-          const dataUrl = await blobToDataUrl(file);
-          setNewMusic({
-            ...newMusic,
-            title: file.name.replace(/\.[^/.]+$/, ""),
-            artist: "Uploaded Audio",
-            url: dataUrl,
-          });
-          showToast("Audio file attached successfully!");
-          return;
-        } catch {}
-      }
-      showToast(err?.message || "Upload failed. Please use the Audio Trimmer.");
+      showToast(err?.message || "Upload failed. Please use the Audio Trimmer or an external URL.");
     } finally {
       setUploadingAudio(false);
     }
@@ -739,7 +711,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "set_active", id }),
       });
-      const resData = await res.json();
+      const resData = await safeFetchJson(res, "music activation");
       if (resData.success) {
         const updatedLibrary = (data.musicLibrary || []).map((m) => ({
           ...m,
@@ -1680,7 +1652,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                         disabled={uploadingAudio}
                         className="text-xs mx-auto block file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#202020] file:text-white hover:file:bg-[#38332E]"
                       />
-                      {uploadingAudio && <p className="text-xs text-amber-700 animate-pulse">Uploading file to server...</p>}
+                      {uploadingAudio && <p className="text-xs text-amber-700 animate-pulse">Uploading file to secure music storage...</p>}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
