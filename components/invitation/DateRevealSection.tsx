@@ -1,404 +1,310 @@
 "use client";
-import React, { useRef, useState, useEffect, useMemo, useCallback } from "react";
-import { WeddingDetails } from "@/types/wedding";
-import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
-import { motion, useInView } from "framer-motion";
+
+import React, { useCallback, useMemo, useRef } from "react";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 import { Calendar, Clock, MapPin } from "lucide-react";
 import confetti from "canvas-confetti";
+import { WeddingDetails } from "@/types/wedding";
+import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { GanpatiLineArt } from "@/components/ui/GanpatiLineArt";
 
 interface DateRevealSectionProps {
   wedding: WeddingDetails;
   className?: string;
 }
 
+const DEFAULT_WEDDING_DATE = "2026-12-18";
+const DEFAULT_WEDDING_TIME = "04:30 PM";
+
+function getWeddingDate(dateValue?: string, timeValue?: string) {
+  const dateMatch = (dateValue || DEFAULT_WEDDING_DATE).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const timeMatch = (timeValue || DEFAULT_WEDDING_TIME).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+
+  if (!dateMatch) return new Date(2026, 11, 18, 16, 30);
+
+  const [, year, month, day] = dateMatch;
+  let hours = timeMatch ? Number(timeMatch[1]) : 16;
+  const minutes = timeMatch ? Number(timeMatch[2]) : 30;
+  const meridiem = timeMatch?.[3]?.toUpperCase();
+
+  if (meridiem === "PM" && hours < 12) hours += 12;
+  if (meridiem === "AM" && hours === 12) hours = 0;
+
+  const parsedDate = new Date(Number(year), Number(month) - 1, Number(day), hours, minutes);
+  return Number.isNaN(parsedDate.getTime()) ? new Date(2026, 11, 18, 16, 30) : parsedDate;
+}
+
+function formatCalendarStamp(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
+}
+
+function PalaceLineArt() {
+  return (
+    <svg
+      viewBox="0 0 620 760"
+      fill="none"
+      className="h-full w-full"
+      aria-hidden="true"
+      preserveAspectRatio="xMidYMax slice"
+    >
+      <path
+        d="M70 760V294c0-94 52-168 124-168 37 0 70 18 96 48 5-75 11-110 20-145 9 35 15 70 20 145 26-30 59-48 96-48 72 0 124 74 124 168v466"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M98 760V306c0-78 42-139 102-139 45 0 83 35 110 89 27-54 65-89 110-89 60 0 102 61 102 139v454"
+        stroke="currentColor"
+        strokeWidth="0.7"
+        strokeDasharray="5 7"
+      />
+      <path d="M36 696h548M52 716h516M68 736h484" stroke="currentColor" strokeWidth="0.7" />
+      <circle cx="310" cy="24" r="4" fill="currentColor" />
+      <path d="m310 2 8 15h-16l8-15Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function DateRevealSection({ wedding, className = "" }: DateRevealSectionProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const isInView = useInView(containerRef, { once: false, margin: "-120px" });
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const isInView = useInView(sectionRef, { once: true, margin: "-90px" });
+  const prefersReducedMotion = useReducedMotion();
+  const dateDetails = useMemo(() => {
+    const date = getWeddingDate(wedding.weddingDate, wedding.weddingTime);
 
-  const [isManuallyToggled, setIsManuallyToggled] = useState<boolean | null>(null);
-  const [hasCelebrated, setHasCelebrated] = useState(false);
+    return {
+      date,
+      day: String(date.getDate()).padStart(2, "0"),
+      month: date.toLocaleDateString("en-US", { month: "long" }),
+      weekday: date.toLocaleDateString("en-US", { weekday: "long" }),
+      year: String(date.getFullYear()),
+      fullDate: date.toLocaleDateString("en-US", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    };
+  }, [wedding.weddingDate, wedding.weddingTime]);
 
-  // Scroll or user toggled reveal
-  const isRevealed = isManuallyToggled !== null ? isManuallyToggled : isInView;
-
-  // Extract wedding date parts
-  const dateInfo = useMemo(() => {
-    try {
-      const d = wedding.weddingDate ? new Date(wedding.weddingDate) : new Date("2026-12-18");
-      const dayNum = String(d.getDate()).padStart(2, "0");
-      const monthNum = String(d.getMonth() + 1).padStart(2, "0");
-      const monthName = d.toLocaleDateString("en-US", { month: "long" }).toUpperCase();
-      const yearNum = String(d.getFullYear());
-      const weekday = d.toLocaleDateString("en-US", { weekday: "long" }).toUpperCase();
-
-      return {
-        day: isNaN(d.getTime()) ? "18" : dayNum,
-        month: isNaN(d.getTime()) ? "DECEMBER" : monthName,
-        monthNum: isNaN(d.getTime()) ? "12" : monthNum,
-        year: isNaN(d.getTime()) ? "2026" : yearNum,
-        weekday: isNaN(d.getTime()) ? "FRIDAY" : weekday,
-      };
-    } catch {
-      return {
-        day: "18",
-        month: "DECEMBER",
-        monthNum: "12",
-        year: "2026",
-        weekday: "FRIDAY",
-      };
-    }
-  }, [wedding.weddingDate]);
-
-  // Elegant golden petal celebration
   const triggerCelebration = useCallback(() => {
+    if (prefersReducedMotion) return;
+
     try {
-      // Golden luxury particles
-      confetti({
-        particleCount: 50,
-        spread: 70,
-        origin: { y: 0.65 },
-        colors: ["#D4AF37", "#C9B38C", "#FFF3D6", "#9E814D", "#B38B3F"],
+      const shared = {
+        spread: 72,
+        startVelocity: 24,
+        gravity: 0.75,
+        scalar: 0.82,
         disableForReducedMotion: true,
-      });
-      // Warm romantic rose petal particles
+      };
+
       confetti({
-        particleCount: 25,
-        spread: 90,
-        origin: { y: 0.62 },
-        colors: ["#C53030", "#9B2C2C", "#E53E3E"],
-        disableForReducedMotion: true,
+        ...shared,
+        particleCount: 42,
+        origin: { x: 0.42, y: 0.62 },
+        colors: ["#C9A86A", "#F3E4C5", "#7A2933"],
       });
-    } catch {}
-  }, []);
-
-  // Automatic celebration when scrolled into view
-  useEffect(() => {
-    if (isRevealed && !hasCelebrated) {
-      setHasCelebrated(true);
-      triggerCelebration();
+      confetti({
+        ...shared,
+        particleCount: 32,
+        origin: { x: 0.58, y: 0.62 },
+        colors: ["#B58F8F", "#EAD8CC", "#D3B474"],
+      });
+    } catch {
+      // The invitation remains fully usable if the canvas API is unavailable.
     }
-    if (!isRevealed) {
-      setHasCelebrated(false);
-    }
-  }, [isRevealed, hasCelebrated, triggerCelebration]);
+  }, [prefersReducedMotion]);
 
-  const toggleReveal = () => {
-    setIsManuallyToggled(!isRevealed);
-    if (!isRevealed) {
-      triggerCelebration();
-    }
-  };
-
-  // Google Calendar link
   const googleCalendarUrl = useMemo(() => {
-    const title = encodeURIComponent(`Wedding: ${wedding.groomName} & ${wedding.brideName}`);
-    const details = encodeURIComponent(
-      `Celebrating the wedding of ${wedding.groomName} & ${wedding.brideName} at ${wedding.location}, ${wedding.city}.`
-    );
-    const location = encodeURIComponent(`${wedding.location}, ${wedding.city}`);
-    const dates = "20261218T110000Z/20261218T180000Z";
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
-  }, [wedding]);
+    const start = dateDetails.date;
+    const end = new Date(start.getTime() + 5 * 60 * 60 * 1000);
+    const venue = [wedding.location, wedding.city].filter(Boolean).join(", ");
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text: `${wedding.groomName} & ${wedding.brideName} — Wedding Celebration`,
+      dates: `${formatCalendarStamp(start)}/${formatCalendarStamp(end)}`,
+      details: `Join us as we celebrate the wedding of ${wedding.groomName} and ${wedding.brideName}.`,
+      location: venue,
+      ctz: "Asia/Kolkata",
+    });
+
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  }, [dateDetails.date, wedding.brideName, wedding.city, wedding.groomName, wedding.location]);
+
+  const motionInitial = prefersReducedMotion ? false : { opacity: 0, y: 28 };
 
   return (
     <section
-      ref={containerRef}
-      className={`relative min-h-[90vh] py-24 sm:py-32 flex items-center justify-center overflow-hidden bg-[#151413] text-[#FAF8F5] ${className}`}
+      ref={sectionRef}
+      id="save-date"
+      className={`relative isolate overflow-hidden bg-[#F4EEE5] py-24 text-[#27221E] sm:py-32 ${className}`}
     >
-      {/* Background Ambient Lighting & Palace Architecture Depth */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#28231D] via-[#171615] to-[#0E0D0C] opacity-95" />
-      <div className="absolute inset-0 bg-grain opacity-25 pointer-events-none" />
+      <div className="absolute inset-0 -z-30 bg-[radial-gradient(circle_at_12%_18%,rgba(181,143,143,0.17),transparent_28%),radial-gradient(circle_at_88%_78%,rgba(201,179,140,0.22),transparent_30%),linear-gradient(135deg,#F8F4ED_0%,#F1E8DC_100%)]" />
+      <div className="absolute inset-0 -z-20 bg-grain opacity-70" />
+      <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-[#C9B38C] to-transparent" />
+      <div className="absolute -left-24 top-1/3 -z-10 h-72 w-72 rounded-full border border-[#B58F8F]/20" />
+      <div className="absolute -right-32 bottom-12 -z-10 h-96 w-96 rounded-full border border-[#C9B38C]/25" />
 
-      {/* Floating Golden Aura Orbs */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-[#C9B38C]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-10 left-10 w-72 h-72 bg-[#D4AF37]/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-10 right-10 w-72 h-72 bg-[#C53030]/5 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Outer Royal Jharokha / Mandap Frame */}
-      <div className="relative z-10 w-full max-w-5xl mx-auto px-4 sm:px-6 flex flex-col items-center text-center">
-        {/* Section Header Flourish */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.9 }}
-          className="space-y-3 mb-10 sm:mb-14"
+      <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
+        <motion.header
+          initial={motionInitial}
+          animate={isInView ? { opacity: 1, y: 0 } : undefined}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          className="mx-auto mb-12 max-w-2xl text-center sm:mb-16"
         >
-          <div className="inline-flex items-center gap-2.5 px-5 py-1.5 rounded-full border border-[#C9B38C]/40 bg-[#1D1B18]/80 backdrop-blur-md shadow-inner">
-            <span className="text-[#D4AF37] text-xs">✦</span>
-            <span className="text-[11px] sm:text-xs font-semibold tracking-[0.35em] text-[#E5D7B7] uppercase">
-              Shubh Vivah &bull; The Royal Union
+          <div className="mb-5 flex items-center justify-center gap-3 text-[#9E814D]">
+            <span className="h-px w-8 bg-[#C9B38C]" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.38em] sm:text-xs">
+              Our forever begins
             </span>
-            <span className="text-[#D4AF37] text-xs">✦</span>
+            <span className="h-px w-8 bg-[#C9B38C]" />
           </div>
-
-          <h2 className="font-editorial-serif text-4xl sm:text-6xl md:text-7xl font-normal tracking-wide text-[#FFFFFF] drop-shadow-lg">
-            Save Our Date
+          <h2 className="font-editorial-serif text-5xl font-light leading-none tracking-[-0.02em] text-[#342923] sm:text-6xl md:text-7xl">
+            Save the Date
           </h2>
-
-          <div className="py-2 flex items-center justify-center">
-            <BotanicalMotif variant="mandap" className="w-28 sm:w-36 text-[#C9B38C]" />
-          </div>
-
-          <p className="max-w-xl mx-auto text-xs sm:text-sm font-serif italic text-[#CFC5B2] leading-relaxed">
-            &ldquo;Two lives, two hearts, joined together in friendship, united forever in love. We warmly invite you to celebrate our union in the royal city of Udaipur.&rdquo;
+          <BotanicalMotif variant="divider" className="mt-5 text-[#B4925A]" />
+          <p className="mx-auto mt-5 max-w-xl text-sm font-light leading-7 text-[#746A61] sm:text-[15px]">
+            With the blessings of our families, we invite you to join us in the city of lakes for a celebration of love, tradition, and togetherness.
           </p>
-        </motion.div>
+        </motion.header>
 
-        {/* --- ROYAL PALACE DATE CARD (UNVEILS ON SCROLL) --- */}
-        <div className="relative w-full max-w-3xl flex flex-col items-center">
-          {/* Main Royal Card Chamber */}
-          <div
-            onClick={toggleReveal}
-            className="relative w-full rounded-3xl bg-[#1B1917]/90 border border-[#C9B38C]/45 p-6 sm:p-10 md:p-12 shadow-[0_20px_60px_rgba(0,0,0,0.85)] backdrop-blur-xl overflow-hidden cursor-pointer group select-none"
-            title="Scroll or click to unveil"
-          >
-            {/* Subtle Inner Gold Hairline Trim */}
-            <div className="absolute inset-2 sm:inset-3 rounded-2xl border border-[#C9B38C]/25 pointer-events-none" />
+        <motion.div
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 40, scale: 0.985 }}
+          animate={isInView ? { opacity: 1, y: 0, scale: 1 } : undefined}
+          transition={{ duration: 0.95, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
+          className="relative overflow-hidden rounded-[2rem] border border-[#BFA16F]/45 bg-[#FCFAF6] shadow-[0_30px_90px_-32px_rgba(74,50,37,0.38)] sm:rounded-[2.75rem]"
+        >
+          <div className="pointer-events-none absolute inset-3 z-20 rounded-[1.4rem] border border-[#C9B38C]/25 sm:inset-4 sm:rounded-[2rem]" />
+          <BotanicalMotif variant="corner" className="pointer-events-none absolute left-6 top-6 z-30 h-8 w-8 text-[#E6CC96]/70" />
+          <BotanicalMotif variant="corner" className="pointer-events-none absolute right-6 top-6 z-30 h-8 w-8 -scale-x-100 text-[#B4925A]/50" />
+          <BotanicalMotif variant="corner" className="pointer-events-none absolute bottom-6 right-6 z-30 h-8 w-8 -scale-x-100 -scale-y-100 text-[#B4925A]/50" />
 
-            {/* Corner Botanical Motifs */}
-            <BotanicalMotif variant="corner" className="absolute top-4 left-4 w-6 h-6 text-[#C9B38C]/60 pointer-events-none" />
-            <BotanicalMotif variant="corner" className="absolute top-4 right-4 w-6 h-6 text-[#C9B38C]/60 -scale-x-100 pointer-events-none" />
-            <BotanicalMotif variant="corner" className="absolute bottom-4 left-4 w-6 h-6 text-[#C9B38C]/60 -scale-y-100 pointer-events-none" />
-            <BotanicalMotif variant="corner" className="absolute bottom-4 right-4 w-6 h-6 text-[#C9B38C]/60 -scale-x-100 -scale-y-100 pointer-events-none" />
+          <div className="grid lg:grid-cols-[0.88fr_1.12fr]">
+            <div className="relative flex min-h-[570px] flex-col items-center overflow-hidden bg-[#5C222C] px-8 py-14 text-center text-[#FFF8EC] sm:min-h-[640px] sm:px-12 sm:py-16 lg:py-20">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(228,195,132,0.14),transparent_46%),linear-gradient(180deg,rgba(255,255,255,0.025),transparent)]" />
+              <div className="absolute inset-x-0 bottom-0 top-4 text-[#E3C483]/18">
+                <PalaceLineArt />
+              </div>
+              <div className="absolute inset-0 bg-grain opacity-20" />
 
-            {/* Royal Palace Jharokha Cusped Arch Backdrop (Replaces astrology ring) */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-              <svg
-                viewBox="0 0 500 350"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-full h-full max-w-2xl text-[#C9B38C]"
-              >
-                {/* Traditional Rajput Palace Cusped Arch Outline */}
-                <path
-                  d="M 50 350 V 170 C 50 120 70 80 110 80 C 135 80 160 95 180 85 C 205 75 220 50 250 20 C 280 50 295 75 320 85 C 340 95 365 80 390 80 C 430 80 450 120 450 170 V 350"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeDasharray="4 4"
-                />
-                <path
-                  d="M 70 350 V 180 C 70 135 88 100 122 100 C 145 100 168 112 185 104 C 208 94 222 72 250 45 C 278 72 292 94 315 104 C 332 112 355 100 378 100 C 412 100 430 135 430 180 V 350"
-                  stroke="currentColor"
-                  strokeWidth="0.8"
-                />
-                {/* Center Pinnacle / Kalash */}
-                <path d="M 250 8 L 254 18 L 246 18 Z" fill="currentColor" />
-                <circle cx="250" cy="6" r="2.5" fill="currentColor" />
-              </svg>
+              <div className="relative z-10 flex h-full w-full flex-1 flex-col items-center">
+                <GanpatiLineArt className="h-12 w-12 text-[#E1C17F] sm:h-14 sm:w-14" />
+                <p className="mt-3 text-[9px] font-semibold uppercase tracking-[0.42em] text-[#EBD7AD] sm:text-[10px]">
+                  Shree Ganeshay Namah
+                </p>
+
+                <button
+                  type="button"
+                  onClick={triggerCelebration}
+                  aria-label={`Celebrate our wedding date, ${dateDetails.fullDate}`}
+                  className="group relative my-9 flex w-full max-w-[300px] flex-1 flex-col items-center justify-center rounded-t-[9rem] border border-[#E1C17F]/45 bg-[#431820]/45 px-5 pb-8 pt-12 outline-none transition-all duration-500 hover:-translate-y-1 hover:border-[#F0D79F]/75 hover:bg-[#431820]/65 focus-visible:ring-2 focus-visible:ring-[#F0D79F] focus-visible:ring-offset-4 focus-visible:ring-offset-[#5C222C] sm:my-10"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.48em] text-[#E5CB96]">
+                    {dateDetails.month}
+                  </span>
+                  <span className="font-editorial-serif text-[7.5rem] font-light leading-[0.82] tracking-[-0.08em] text-[#FFF9EF] transition-transform duration-500 group-hover:scale-[1.03] sm:text-[9rem]">
+                    {dateDetails.day}
+                  </span>
+                  <span className="mt-5 flex w-full items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.34em] text-[#E5CB96]">
+                    <span className="h-px flex-1 bg-[#DAB96F]/50" />
+                    {dateDetails.weekday}
+                    <span className="h-px flex-1 bg-[#DAB96F]/50" />
+                  </span>
+                  <span className="mt-3 font-editorial-serif text-2xl tracking-[0.25em] text-[#FFF2D8]">
+                    {dateDetails.year}
+                  </span>
+                </button>
+
+                <p className="font-editorial-serif text-3xl font-light tracking-wide text-[#FFF9EF] sm:text-4xl">
+                  {wedding.groomName}
+                  <span className="mx-3 italic text-[#E1C17F]">&</span>
+                  {wedding.brideName}
+                </p>
+              </div>
             </div>
 
-            {/* --- REVEALED CONTENT: ROYAL WEDDING DATE TRIPTYCH --- */}
-            <div className="relative z-10 flex flex-col items-center justify-center space-y-7 sm:space-y-9">
-              {/* Top Flourish Badge */}
-              <div className="flex items-center gap-2 text-[#C9B38C]">
-                <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
-                <span className="text-[10px] tracking-[0.3em] uppercase text-[#E5D7B7] font-medium">
-                  Udaipur, Rajasthan
-                </span>
-                <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
-              </div>
+            <div className="relative flex flex-col justify-center px-7 py-14 sm:px-12 sm:py-16 lg:px-16 lg:py-20">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(201,179,140,0.13),transparent_36%)]" />
 
-              {/* 3 Royal Floating Pillars of Date */}
-              <div className="relative z-10 w-full grid grid-cols-1 sm:grid-cols-3 gap-5 sm:gap-4 items-center justify-center">
-                {/* 1. Day of Celebration */}
-                <motion.div
-                  initial={false}
-                  animate={
-                    isRevealed
-                      ? { opacity: 1, y: 0, scale: 1 }
-                      : { opacity: 0, y: 30, scale: 0.85 }
-                  }
-                  transition={{ duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl bg-[#231F1B]/90 border border-[#C9B38C]/35 shadow-md group-hover:border-[#D4AF37]/60 transition-colors"
-                >
-                  <span className="text-[10px] sm:text-[11px] font-semibold tracking-[0.3em] text-[#C9B38C] uppercase mb-1">
-                    Day
-                  </span>
-                  <p className="font-editorial-serif text-2xl sm:text-3xl font-light text-[#FFFFFF] tracking-wider">
-                    {dateInfo.weekday}
-                  </p>
-                  <span className="text-[10px] text-[#A69B89] tracking-widest uppercase mt-1">
-                    Wedding Day
-                  </span>
-                </motion.div>
+              <div className="relative z-10">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.36em] text-[#9E814D]">
+                  A royal celebration awaits
+                </p>
+                <h3 className="mt-5 max-w-md font-editorial-serif text-4xl font-light leading-[1.08] text-[#342923] sm:text-5xl">
+                  Meet us where the palace lights kiss the lake.
+                </h3>
+                <p className="mt-6 max-w-lg text-sm font-light leading-7 text-[#736B63]">
+                  Come witness our sacred vows and stay for an evening filled with music, laughter, and memories we will carry forever.
+                </p>
 
-                {/* 2. Grand Centerpiece: Royal Medallion Date (18) */}
-                <motion.div
-                  initial={false}
-                  animate={
-                    isRevealed
-                      ? { opacity: 1, scale: 1, y: 0 }
-                      : { opacity: 0, scale: 0.6, y: 40 }
-                  }
-                  transition={{ duration: 1.1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative flex flex-col items-center justify-center p-6 rounded-3xl bg-gradient-to-b from-[#312B23] via-[#24201B] to-[#1A1815] border-2 border-[#D4AF37] shadow-[0_12px_45px_rgba(212,175,55,0.3)] sm:scale-110 z-20 group-hover:shadow-[0_16px_55px_rgba(212,175,55,0.45)] transition-all"
-                >
-                  {/* Subtle radiating golden glow */}
-                  <div className="absolute inset-0 rounded-3xl bg-[#D4AF37]/12 blur-xl pointer-events-none" />
+                <div className="my-8 h-px w-full bg-gradient-to-r from-[#C9B38C]/70 via-[#C9B38C]/25 to-transparent" />
 
-                  <span className="relative z-10 text-[10px] font-semibold tracking-[0.4em] text-[#E8D099] uppercase">
-                    The Date
-                  </span>
-
-                  <h3 className="relative z-10 font-editorial-serif text-6xl sm:text-7xl md:text-8xl font-normal text-transparent bg-clip-text bg-gradient-to-b from-[#FFFFFF] via-[#FFF3D6] to-[#D4AF37] tracking-tighter my-1 drop-shadow-md">
-                    {dateInfo.day}
-                  </h3>
-
-                  <div className="relative z-10 flex items-center gap-2 text-[#C9B38C]">
-                    <span className="h-[1px] w-6 bg-[#C9B38C]/50" />
-                    <span className="text-xs text-[#D4AF37]">✦</span>
-                    <span className="h-[1px] w-6 bg-[#C9B38C]/50" />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-[#C9B38C]/35 bg-[#F7F1E8]/70 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#B4925A]/65">
+                    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-[#C9B38C]/45 bg-[#FFFDF9] text-[#8F7043]">
+                      <Calendar className="h-4 w-4" strokeWidth={1.5} />
+                    </div>
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.26em] text-[#9E814D]">Wedding day</p>
+                    <p className="mt-1 font-editorial-serif text-xl text-[#342923]">{dateDetails.fullDate}</p>
                   </div>
-                </motion.div>
 
-                {/* 3. Month & Year (December 2026) */}
-                <motion.div
-                  initial={false}
-                  animate={
-                    isRevealed
-                      ? { opacity: 1, y: 0, scale: 1 }
-                      : { opacity: 0, y: 30, scale: 0.85 }
-                  }
-                  transition={{ duration: 0.9, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl bg-[#231F1B]/90 border border-[#C9B38C]/35 shadow-md group-hover:border-[#D4AF37]/60 transition-colors"
-                >
-                  <span className="text-[10px] sm:text-[11px] font-semibold tracking-[0.3em] text-[#C9B38C] uppercase mb-1">
-                    Month &bull; Year
-                  </span>
-                  <p className="font-editorial-serif text-xl sm:text-2xl font-light text-[#FFFFFF] tracking-wider">
-                    {dateInfo.month}
-                  </p>
-                  <span className="text-xs sm:text-sm font-editorial-serif text-[#D4AF37] tracking-widest mt-1">
-                    {dateInfo.year}
-                  </span>
-                </motion.div>
-              </div>
-
-              {/* Ceremony Muhurat & Royal Venue Summary */}
-              <motion.div
-                initial={false}
-                animate={
-                  isRevealed
-                    ? { opacity: 1, y: 0 }
-                    : { opacity: 0, y: 25 }
-                }
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="w-full max-w-xl mx-auto pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3.5"
-              >
-                <div className="p-4 rounded-xl bg-[#211E1B]/95 border border-[#C9B38C]/35 flex items-center gap-3.5 text-left shadow-sm">
-                  <div className="w-10 h-10 rounded-lg bg-[#2D2822] border border-[#C9B38C]/50 flex items-center justify-center flex-shrink-0 text-[#D4AF37]">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-semibold tracking-widest uppercase text-[#C9B38C]">
-                      Ceremony Muhurat
-                    </span>
-                    <p className="font-editorial-serif text-sm font-medium text-[#FFFFFF]">
-                      {wedding.weddingTime || "04:30 PM"}
+                  <div className="rounded-2xl border border-[#C9B38C]/35 bg-[#F7F1E8]/70 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#B4925A]/65">
+                    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-[#C9B38C]/45 bg-[#FFFDF9] text-[#8F7043]">
+                      <Clock className="h-4 w-4" strokeWidth={1.5} />
+                    </div>
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.26em] text-[#9E814D]">Ceremony muhurat</p>
+                    <p className="mt-1 font-editorial-serif text-xl text-[#342923]">
+                      {wedding.weddingTime || DEFAULT_WEDDING_TIME} onwards
                     </p>
-                    <span className="text-[10px] text-[#A69B89]">Pheras & Wedding Rituals</span>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#211E1B]/95 border border-[#C9B38C]/35 flex items-center gap-3.5 text-left shadow-sm">
-                  <div className="w-10 h-10 rounded-lg bg-[#2D2822] border border-[#C9B38C]/50 flex items-center justify-center flex-shrink-0 text-[#D4AF37]">
-                    <MapPin className="w-4 h-4" />
+                <div className="mt-4 flex items-start gap-4 rounded-2xl border border-[#C9B38C]/35 bg-[#F7F1E8]/70 p-5">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#C9B38C]/45 bg-[#FFFDF9] text-[#8F7043]">
+                    <MapPin className="h-4 w-4" strokeWidth={1.5} />
                   </div>
-                  <div>
-                    <span className="text-[9px] font-semibold tracking-widest uppercase text-[#C9B38C]">
-                      Royal Venue
-                    </span>
-                    <p className="font-editorial-serif text-sm font-medium text-[#FFFFFF] truncate">
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-semibold uppercase tracking-[0.26em] text-[#9E814D]">The venue</p>
+                    <p className="mt-1 font-editorial-serif text-xl text-[#342923]">
                       {wedding.location || "The Leela Palace"}
                     </p>
-                    <span className="text-[10px] text-[#A69B89]">{wedding.city || "Lake Pichola, Udaipur"}</span>
+                    <p className="mt-1 text-xs leading-5 text-[#7C7269]">{wedding.city || "Udaipur, Rajasthan"}</p>
                   </div>
                 </div>
-              </motion.div>
+
+                <div className="mt-8 flex justify-center">
+                  <a
+                    href={googleCalendarUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={triggerCelebration}
+                    className="inline-flex min-h-12 w-full max-w-sm items-center justify-center gap-2 rounded-full bg-[#5C222C] px-6 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#FFF9EF] shadow-[0_10px_24px_-12px_rgba(92,34,44,0.8)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#6B2934] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8F7043] focus-visible:ring-offset-2"
+                  >
+                    <Calendar className="h-4 w-4 text-[#E3C483]" strokeWidth={1.7} />
+                    Add to Google
+                  </a>
+                </div>
+
+                {wedding.hashtag && (
+                  <p className="mt-7 text-center font-editorial-serif text-lg italic tracking-wide text-[#9A7D51]">
+                    {wedding.hashtag}
+                  </p>
+                )}
+              </div>
             </div>
-
-            {/* --- THE VEILING CURTAIN: ORNATE GOLDEN PALACE DOORS THAT PART ON SCROLL --- */}
-            {/* Left Royal Door Wing */}
-            <motion.div
-              initial={false}
-              animate={
-                isRevealed
-                  ? { x: "-102%", opacity: 0 }
-                  : { x: "0%", opacity: 1 }
-              }
-              transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute left-0 top-0 w-1/2 h-full z-30 overflow-hidden pointer-events-none bg-gradient-to-r from-[#201D1A] via-[#2A251E] to-[#362E24] border-r border-[#D4AF37]/50 shadow-2xl flex flex-col items-center justify-center"
-            >
-              {/* Palace Lattice Texture */}
-              <div className="absolute inset-0 bg-grain opacity-40" />
-              <div className="absolute inset-3 border border-[#D4AF37]/30 rounded-xl" />
-              <div className="relative z-10 flex flex-col items-center space-y-2 text-[#E5D7B7]">
-                <BotanicalMotif variant="mandap" className="w-16 text-[#D4AF37]/60" />
-                <span className="text-[11px] font-editorial-serif tracking-[0.4em] uppercase text-[#D4AF37]">
-                  The Royal Union
-                </span>
-              </div>
-            </motion.div>
-
-            {/* Right Royal Door Wing */}
-            <motion.div
-              initial={false}
-              animate={
-                isRevealed
-                  ? { x: "102%", opacity: 0 }
-                  : { x: "0%", opacity: 1 }
-              }
-              transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-              className="absolute right-0 top-0 w-1/2 h-full z-30 overflow-hidden pointer-events-none bg-gradient-to-l from-[#201D1A] via-[#2A251E] to-[#362E24] border-l border-[#D4AF37]/50 shadow-2xl flex flex-col items-center justify-center"
-            >
-              {/* Palace Lattice Texture */}
-              <div className="absolute inset-0 bg-grain opacity-40" />
-              <div className="absolute inset-3 border border-[#D4AF37]/30 rounded-xl" />
-              <div className="relative z-10 flex flex-col items-center space-y-2 text-[#E5D7B7]">
-                <BotanicalMotif variant="mandap" className="w-16 text-[#D4AF37]/60" />
-                <span className="text-[11px] font-editorial-serif tracking-[0.4em] uppercase text-[#D4AF37]">
-                  Save Our Date
-                </span>
-              </div>
-            </motion.div>
-
-            {/* Center Royal Medallion / Wax Stamp (lifts & rotates away on scroll) */}
-            <motion.div
-              initial={false}
-              animate={
-                isRevealed
-                  ? { scale: 0, opacity: 0, rotate: 45 }
-                  : { scale: 1, opacity: 1, rotate: 0 }
-              }
-              transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-40 w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-[#9E782F] via-[#F0D99D] to-[#8C6520] p-1.5 shadow-[0_10px_35px_rgba(0,0,0,0.8)] pointer-events-none"
-            >
-              <div className="w-full h-full rounded-full border border-white/60 bg-[#1F1C18] flex flex-col items-center justify-center text-[#E5D7B7]">
-                <span className="text-base text-[#D4AF37]">✦</span>
-                <span className="text-[8px] font-bold tracking-[0.3em] uppercase mt-1 text-[#F0D99D]">
-                  Unveil
-                </span>
-                <span className="text-[7px] text-[#A69B89] tracking-wider mt-0.5">
-                  Scroll Down
-                </span>
-              </div>
-            </motion.div>
           </div>
+        </motion.div>
 
-          {/* Interactive Action: Add to Calendar */}
-          <div className="mt-8 flex items-center justify-center">
-            <a
-              href={googleCalendarUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full bg-gradient-to-r from-[#D4AF37] via-[#E2C17C] to-[#B38B3F] text-[#151413] hover:brightness-110 text-xs font-semibold tracking-wider uppercase transition-all duration-300 shadow-lg hover:scale-105 active:scale-95"
-            >
-              <Calendar className="w-4 h-4 text-[#151413]" />
-              <span>Add to Calendar</span>
-            </a>
-          </div>
-        </div>
+        <motion.p
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          animate={isInView ? { opacity: 1 } : undefined}
+          transition={{ duration: 0.8, delay: 0.7 }}
+          className="mt-7 text-center text-[10px] uppercase tracking-[0.28em] text-[#8E8075]"
+        >
+          Tap the date for a little celebration
+        </motion.p>
       </div>
     </section>
   );

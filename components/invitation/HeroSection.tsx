@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { WeddingDetails } from "@/types/wedding";
@@ -9,26 +9,36 @@ interface HeroSectionProps {
   wedding: WeddingDetails;
 }
 
+const LOCAL_HERO_IMAGE = "/images/hero-wedding.jpg";
+
 export function HeroSection({ wedding }: HeroSectionProps) {
   const { scrollY } = useScroll();
   const y = useTransform(scrollY, [0, 600], [0, 160]);
   const opacity = useTransform(scrollY, [0, 450], [1, 0.2]);
+  const [heroImageSrc, setHeroImageSrc] = useState(wedding.heroImage || LOCAL_HERO_IMAGE);
+
+  useEffect(() => {
+    setHeroImageSrc(wedding.heroImage || LOCAL_HERO_IMAGE);
+  }, [wedding.heroImage]);
 
   return (
     <section className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-[#161514] text-[#FAF8F5]">
       {/* Background Image with Parallax */}
       <motion.div style={{ y }} className="absolute inset-0 w-full h-[120%] -top-[10%]">
         <Image
-          src={wedding.heroImage || "https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1600&auto=format&fit=crop"}
+          src={heroImageSrc}
           alt={`${wedding.brideName} and ${wedding.groomName}`}
           fill
-          loading="eager"
+          priority
           sizes="100vw"
-          className="object-cover object-center scale-105 filter brightness-[0.72] contrast-[1.05]"
+          onError={() => {
+            if (heroImageSrc !== LOCAL_HERO_IMAGE) setHeroImageSrc(LOCAL_HERO_IMAGE);
+          }}
+          className="scale-105 object-cover object-center brightness-[0.68] contrast-[1.04] saturate-[0.9]"
         />
         {/* Editorial Gradients for Legibility and Luxury Mood */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#161514] via-[#161514]/40 to-[#161514]/70" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-[#161514]/30 to-[#161514]/85" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#161514]/90 via-[#161514]/25 to-[#161514]/55" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-[#161514]/10 to-[#161514]/65" />
       </motion.div>
 
       {/* Subtle Grain Overlay */}

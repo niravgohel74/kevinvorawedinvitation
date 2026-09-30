@@ -9,7 +9,7 @@ export const initialWeddingData: WeddingData = {
     location: "The Leela Palace, Lake Pichola",
     city: "Udaipur, Rajasthan",
     hashtag: "#AaravWedsMeera",
-    heroImage: "https://images.unsplash.com/photo-1583939003579-730e3918a45a?q=80&w=1600&auto=format&fit=crop",
+    heroImage: "/images/hero-wedding.jpg",
     invitationSubtitle: "Two souls, one destiny. We invite you to celebrate our union.",
     heroQuote: "In the quiet rhythm of our laughter and in every shared dream, we found our forever.",
     heroTagline: "Two Souls • One Heartbeat",
