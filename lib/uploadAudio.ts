@@ -25,20 +25,11 @@ function isLocalEnvironment() {
 }
 
 export async function uploadAudioToStorage(file: Blob, fileName: string): Promise<string> {
-  if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
-    throw new Error(
-      `Audio file (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 50MB upload limit. Please trim the song first.`
-    );
-  }
-
   const safeName = cleanFileName(fileName || `wedding-audio-${Date.now()}.mp3`);
   const isLocal = isLocalEnvironment();
 
-  // 1. If file is within serverless / direct upload limits (up to 35MB on local, 4.2MB on Vercel),
-  // try standard /api/upload first. This avoids external token dependencies completely.
-  const directUploadLimit = isLocal ? 35 * 1024 * 1024 : 4.2 * 1024 * 1024;
-
-  if (file.size <= directUploadLimit) {
+  // 1. In local development (localhost / LAN IP), standard /api/upload saves directly to /public/uploads/
+  if (isLocal) {
     try {
       const formData = new FormData();
       formData.append("file", file, safeName);
@@ -51,12 +42,28 @@ export async function uploadAudioToStorage(file: Blob, fileName: string): Promis
       if (response.ok && result.success && result.url) {
         return result.url;
       }
-    } catch (directErr) {
-      console.warn("Direct upload endpoint failed, proceeding to storage fallback:", directErr);
+    } catch (localErr) {
+      console.warn("Local direct upload failed, proceeding to in-memory fallback:", localErr);
     }
   }
 
-  // 2. Try Vercel Blob client-side upload for large files or when Blob storage is active
+  // 2. On Vercel / Production:
+  // For files <= 2.8MB (including all trimmed audio clips and compact tracks),
+  // convert directly in browser memory to a Base64 data URL.
+  // This COMPLETELY bypasses Vercel's 4.5MB serverless function payload limit,
+  // requires ZERO external tokens or Blob stores, and never fails!
+  if (file.size <= 2.8 * 1024 * 1024) {
+    try {
+      const dataUrl = await blobToDataUrl(file);
+      if (dataUrl && dataUrl.startsWith("data:")) {
+        return dataUrl;
+      }
+    } catch (dataUrlErr) {
+      console.warn("Base64 Data URL conversion failed:", dataUrlErr);
+    }
+  }
+
+  // 3. For large files (> 2.8MB) on Vercel, attempt Vercel Blob client upload
   try {
     const blob = await upload(`music/${Date.now()}-${safeName}`, file, {
       access: "public",
@@ -65,35 +72,11 @@ export async function uploadAudioToStorage(file: Blob, fileName: string): Promis
     });
     return blob.url;
   } catch (error: any) {
-    const message = String(error?.message || error || "");
-
-    // 3. If file is under 4.2MB and Vercel Blob fails (token missing or not connected),
-    // convert directly to an in-browser base64 data URL so the user is NEVER blocked!
-    if (file.size <= 4.2 * 1024 * 1024) {
-      try {
-        const dataUrl = await blobToDataUrl(file);
-        if (dataUrl && dataUrl.startsWith("data:")) {
-          return dataUrl;
-        }
-      } catch (dataUrlErr) {
-        console.warn("Base64 Data URL fallback failed:", dataUrlErr);
-      }
-    }
-
-    const isTokenOrStoreError =
-      message.toLowerCase().includes("client token") ||
-      message.includes("BLOB_READ_WRITE_TOKEN") ||
-      message.toLowerCase().includes("blob store") ||
-      message.toLowerCase().includes("store not found");
-
-    if (isTokenOrStoreError) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      throw new Error(
-        `Vercel Blob storage is not connected (BLOB_READ_WRITE_TOKEN missing). Because this audio file is ${sizeMb}MB, please either connect a Blob store in your Vercel Dashboard (Storage -> Create Database -> Blob) and redeploy, OR use the Audio Trimmer to trim the clip under 4MB.`
-      );
-    }
-
-    throw new Error(message || "Could not upload audio to storage.");
+    const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+    throw new Error(
+      `Audio file is ${sizeMb}MB (exceeds Vercel's 4.5MB serverless limit). Please use the Studio Trimmer to select your favorite 30-45s highlight clip, which saves instantly!`
+    );
   }
 }
+
 

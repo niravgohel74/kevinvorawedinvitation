@@ -23,11 +23,12 @@ export async function POST(req: NextRequest) {
     const isVercel = process.env.VERCEL === "1";
 
     // Vercel serverless request & response payloads have a strict 4.5MB limit.
-    // In local development, allow up to 35MB for high-fidelity 320kbps full audio tracks.
-    const maxSizeBytes = isVercel ? 4.2 * 1024 * 1024 : 35 * 1024 * 1024;
+    // In Base64, files expand by 33%, so 3.0MB produces ~4.0MB payload (safely within 4.5MB).
+    // In local development, allow up to 35MB.
+    const maxSizeBytes = isVercel ? 3.0 * 1024 * 1024 : 35 * 1024 * 1024;
     if (file.size > maxSizeBytes) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      const limitMb = isVercel ? "4.2MB" : "35MB";
+      const limitMb = isVercel ? "3.0MB" : "35MB";
       return NextResponse.json(
         {
           success: false,

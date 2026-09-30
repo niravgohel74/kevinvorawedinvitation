@@ -676,7 +676,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     if (!file) return;
 
     // Very large files should be trimmed before uploading to avoid excessive storage and playback cost.
-    if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
+    if (file.size > 2.5 * 1024 * 1024) {
       showToast("Audio file is large. Opening Studio Trimmer to select your favorite clip...");
       handleOpenTrimmer({
         title: file.name.replace(/\.[^/.]+$/, ""),

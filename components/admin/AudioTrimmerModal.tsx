@@ -314,10 +314,9 @@ export function AudioTrimmerModal({
     try {
       let finalUrl = audioUrl;
       if (audioFile) {
-        if (audioFile.size > MAX_AUDIO_UPLOAD_BYTES) {
-          throw new Error(
-            `Audio file (${(audioFile.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 50MB upload limit. Please trim the song or provide an external audio URL.`
-          );
+        if (audioFile.size > 2.5 * 1024 * 1024) {
+          setIsTrimming(false);
+          return handleTrimAndSave();
         }
 
         setStatusMessage("Uploading audio file to music storage...");

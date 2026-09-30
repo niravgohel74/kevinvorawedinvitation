@@ -195,37 +195,28 @@ export async function sliceAudioSource(
     const numChannels = decodedBuffer.numberOfChannels;
 
     const clampedStart = Math.max(0, Math.min(startSeconds, decodedBuffer.duration));
-    // Up to 60 seconds highlight clip
-    const maxEnd = Math.min(decodedBuffer.duration, clampedStart + 60);
+    // Up to 45 seconds highlight clip (optimal duration for website background music)
+    const maxEnd = Math.min(decodedBuffer.duration, clampedStart + 45);
     const clampedEnd = Math.max(clampedStart + 0.5, Math.min(endSeconds, maxEnd));
     const sliceDuration = clampedEnd - clampedStart;
 
-    // Adaptive High-Fidelity sample rate & channel selection:
-    // Keeps payload strictly under 4.1MB while delivering CD / Studio grade sound.
-    let targetSampleRate = 44100;
-    let useStereo = numChannels >= 2;
-    let qualityInfo = "Studio Quality (Stereo 44.1 kHz)";
+    // Adaptive sample rate engineered to keep binary payload strictly under 2.0MB
+    // (Base64 < 2.6MB), completely eliminating Vercel's 4.5MB serverless limits while preserving warm acoustics.
+    let targetSampleRate = 24000;
+    let qualityInfo = "Studio Quality (24 kHz)";
 
-    if (sliceDuration <= 23) {
-      targetSampleRate = Math.min(44100, sourceSampleRate);
-      useStereo = numChannels >= 2;
-      qualityInfo = `Studio Stereo (${(targetSampleRate / 1000).toFixed(1)} kHz)`;
-    } else if (sliceDuration <= 33) {
-      // 32 kHz stereo preserves full acoustic frequencies up to 16 kHz (crystal clear)
+    if (sliceDuration <= 20) {
       targetSampleRate = 32000;
-      useStereo = numChannels >= 2;
-      qualityInfo = "Broadcast Stereo (32 kHz Studio Fidelity)";
-    } else if (sliceDuration <= 46) {
-      // 44.1 kHz High-Fidelity Mono (full 22 kHz acoustic range, warm and rich)
-      targetSampleRate = 44100;
-      useStereo = false;
-      qualityInfo = "Studio High-Fidelity (44.1 kHz)";
+      qualityInfo = "Studio Fidelity (32 kHz)";
+    } else if (sliceDuration <= 35) {
+      targetSampleRate = 24000;
+      qualityInfo = "High-Fidelity (24 kHz)";
     } else {
-      targetSampleRate = 32000;
-      useStereo = false;
-      qualityInfo = "High-Fidelity (32 kHz)";
+      targetSampleRate = 22050;
+      qualityInfo = "Acoustic Fidelity (22 kHz)";
     }
 
+    const useStereo = false; // Mono mixdown preserves full instrumental richness while halving payload size
     const targetLength = Math.max(1, Math.floor(sliceDuration * targetSampleRate));
     const leftData = new Float32Array(targetLength);
     const rightData = useStereo ? new Float32Array(targetLength) : null;
