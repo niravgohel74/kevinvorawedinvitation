@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { WeddingDetails } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { GanpatiLineArt } from "@/components/ui/GanpatiLineArt";
 import { WaxSeal } from "@/components/ui/WaxSeal";
 import confetti from "canvas-confetti";
 
@@ -48,22 +49,6 @@ export function EnvelopeIntro({
     onOpen();
   };
 
-  // Format date nicely e.g. "18 DECEMBER 2026"
-  const formattedDate = React.useMemo(() => {
-    try {
-      if (!wedding.weddingDate) return "DECEMBER 2026";
-      const d = new Date(wedding.weddingDate);
-      if (isNaN(d.getTime())) return wedding.weddingDate.toUpperCase();
-      return d.toLocaleDateString("en-US", {
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-      }).toUpperCase();
-    } catch {
-      return wedding.weddingDate;
-    }
-  }, [wedding.weddingDate]);
-
   return (
     <AnimatePresence>
       <motion.div
@@ -99,8 +84,9 @@ export function EnvelopeIntro({
           {/* Inner subtle gold hairline border */}
           <div className="absolute inset-3 sm:inset-4 rounded-xl border border-[#C9B38C]/25 pointer-events-none" />
 
-          {/* Invitation Header Top Flourish */}
-          <div className="relative z-10 space-y-2">
+          {/* Invitation Header Top Flourish with Ganpati Line Art */}
+          <div className="relative z-10 flex flex-col items-center space-y-2">
+            <GanpatiLineArt className="w-12 h-12 text-[#9E814D] mb-1 drop-shadow-sm" />
             <span className="text-[11px] sm:text-xs font-medium tracking-[0.35em] text-[#9E814D] uppercase">
               Shree Ganeshay Namah
             </span>
@@ -126,16 +112,6 @@ export function EnvelopeIntro({
             <h1 className="font-editorial-serif text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-[#202020]">
               {wedding.brideName}
             </h1>
-          </div>
-
-          {/* Date & Location */}
-          <div className="relative z-10 space-y-2 text-[#4A443E]">
-            <p className="font-serif text-sm sm:text-base tracking-[0.2em] font-medium text-[#202020]">
-              {formattedDate}
-            </p>
-            <p className="text-xs sm:text-sm tracking-wider text-[#736B63]">
-              {wedding.location} • {wedding.city}
-            </p>
           </div>
 
           {/* Subtle Decorative Divider */}
