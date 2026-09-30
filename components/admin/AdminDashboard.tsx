@@ -101,28 +101,73 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const persistLocalBackup = (updated: WeddingData) => {
     try {
       localStorage.setItem("wedding_live_data", JSON.stringify(updated));
+      if (updated.musicLibrary && updated.musicLibrary.length > 0) {
+        localStorage.setItem("wedding_admin_music_library", JSON.stringify(updated.musicLibrary));
+      }
+      const active = updated.musicLibrary?.find((m) => m.isActive);
+      if (active) {
+        localStorage.setItem("wedding_active_music_url", active.url);
+        localStorage.setItem("wedding_active_music_id", active.id);
+      }
     } catch (err) {
       console.warn("Could not save to localStorage:", err);
     }
   };
 
-  // Hydrate local cache on mount
+  // Hydrate local cache on mount safely without wiping out music library or server data
   React.useEffect(() => {
     try {
       const cached = localStorage.getItem("wedding_live_data");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && parsed.wedding) {
-          setData((prev) => ({
-            ...prev,
-            ...parsed,
-            wedding: {
-              ...prev.wedding,
-              ...parsed.wedding,
-            },
-          }));
-        }
+      const localMusic = localStorage.getItem("wedding_admin_music_library");
+      let parsedMusic: MusicTrack[] = [];
+      if (localMusic) {
+        try {
+          parsedMusic = JSON.parse(localMusic);
+        } catch {}
       }
+
+      setData((prev) => {
+        let mergedData = { ...prev };
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.wedding) {
+              mergedData = {
+                ...mergedData,
+                ...parsed,
+                wedding: {
+                  ...mergedData.wedding,
+                  ...parsed.wedding,
+                },
+              };
+            }
+          } catch {}
+        }
+
+        // Merge music library by ID across server, live backup, and music storage
+        // This guarantees that refreshing NEVER wipes out any newly uploaded track!
+        const trackMap = new Map<string, MusicTrack>();
+        (prev.musicLibrary || []).forEach((t) => trackMap.set(t.id, t));
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            (parsed.musicLibrary || []).forEach((t: MusicTrack) => trackMap.set(t.id, t));
+          } catch {}
+        }
+        parsedMusic.forEach((t) => trackMap.set(t.id, t));
+
+        const mergedTracks = Array.from(trackMap.values());
+        const activeTrack = mergedTracks.find((m) => m.isActive);
+
+        return {
+          ...mergedData,
+          musicLibrary: mergedTracks,
+          wedding: {
+            ...mergedData.wedding,
+            ambientMusicUrl: activeTrack?.url || mergedData.wedding.ambientMusicUrl,
+          },
+        };
+      });
     } catch (e) {
       console.warn("Mount cache error:", e);
     }
@@ -556,16 +601,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const updatedList = (data.musicLibrary || []).map((m) =>
           m.id === updated.id ? { ...m, ...resJson.data } : m
         );
-        setData({
+        const nextData = {
           ...data,
           musicLibrary: updatedList,
           wedding: updated.isActive ? { ...data.wedding, ambientMusicUrl: updated.url } : data.wedding,
-        });
-        if (updated.isActive) {
-          try {
-            localStorage.setItem("wedding_active_music_url", updated.url);
-          } catch {}
-        }
+        };
+        setData(nextData);
+        persistLocalBackup(nextData);
         showToast("Music track updated with studio audio!");
       } else {
         showToast(resJson.error || "Failed to update track");
@@ -583,11 +625,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resJson = await safeFetchJson(res, "music track creation");
       if (resJson.success) {
-        setData({
+        const nextList = [...(data.musicLibrary || []), resJson.data];
+        const nextData = {
           ...data,
-          musicLibrary: [...(data.musicLibrary || []), resJson.data],
+          musicLibrary: nextList,
           wedding: updated.isActive ? { ...data.wedding, ambientMusicUrl: resJson.data.url } : data.wedding,
-        });
+        };
+        setData(nextData);
+        persistLocalBackup(nextData);
         showToast("New track added to music library!");
       } else {
         showToast(resJson.error || "Failed to add track");
@@ -657,11 +702,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await safeFetchJson(res, "music track creation");
       if (resData.success) {
-        setData({
+        const nextList = [...(data.musicLibrary || []), resData.data];
+        const nextData = {
           ...data,
-          musicLibrary: [...(data.musicLibrary || []), resData.data],
+          musicLibrary: nextList,
           wedding: newMusic.isActive ? { ...data.wedding, ambientMusicUrl: resData.data.url } : data.wedding,
-        });
+        };
+        setData(nextData);
+        persistLocalBackup(nextData);
         setNewMusicModal(false);
         setNewMusic({ title: "", artist: "", url: "", isActive: false });
         showToast("Track added to music library!");
@@ -717,17 +765,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           ...m,
           isActive: m.id === id,
         }));
-        setData({
+        const nextData = {
           ...data,
           musicLibrary: updatedLibrary,
           wedding: { ...data.wedding, ambientMusicUrl: resData.data.url },
-        });
-
-        // Instant local sync so live invitation in this browser immediately plays the active track
-        try {
-          localStorage.setItem("wedding_active_music_url", resData.data.url);
-          localStorage.setItem("wedding_active_music_id", id);
-        } catch {}
+        };
+        setData(nextData);
+        persistLocalBackup(nextData);
 
         showToast(`"${resData.data.title}" is now active on the invitation!`);
       }
@@ -741,10 +785,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     try {
       const res = await fetch(`/api/music?id=${id}`, { method: "DELETE" });
       if (res.ok) {
-        setData({
+        const nextList = (data.musicLibrary || []).filter((m) => m.id !== id);
+        const nextData = {
           ...data,
-          musicLibrary: (data.musicLibrary || []).filter((m) => m.id !== id),
-        });
+          musicLibrary: nextList,
+        };
+        setData(nextData);
+        persistLocalBackup(nextData);
         showToast("Track deleted.");
       }
     } catch {
