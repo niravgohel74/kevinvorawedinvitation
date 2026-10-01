@@ -30,59 +30,13 @@ export function PublicInvitationView({
   const [data, setData] = useState<WeddingData>(initialData);
   const [isOpened, setIsOpened] = useState(isEmbedPreview);
 
-  // Sync active music and latest wedding data dynamically on mount
+  // Sync latest wedding data dynamically on mount across all devices
   useEffect(() => {
-    // 1. Instant hydration from localStorage if cached from Admin
-    try {
-      const cached = localStorage.getItem("wedding_live_data");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && parsed.wedding) {
-          setData((prev) => ({
-            ...prev,
-            ...parsed,
-            wedding: {
-              ...prev.wedding,
-              ...parsed.wedding,
-            },
-          }));
-        }
-      }
-      const localActiveMusic = localStorage.getItem("wedding_active_music_url");
-      if (localActiveMusic) {
-        setData((prev) => ({
-          ...prev,
-          wedding: {
-            ...prev.wedding,
-            ambientMusicUrl: localActiveMusic,
-          },
-        }));
-      }
-    } catch (e) {
-      console.warn("Local storage sync error:", e);
-    }
-
-    // 2. Fetch fresh wedding data from /api/wedding (picks up Vercel runtime updates)
-    fetch("/api/wedding")
+    fetch("/api/wedding", { cache: "no-store" })
       .then((r) => r.json())
       .then((res) => {
         if (res.success && res.data) {
-          const freshUrl =
-            (typeof window !== "undefined" && localStorage.getItem("wedding_active_music_url")) ||
-            res.data.wedding?.ambientMusicUrl ||
-            initialData.wedding.ambientMusicUrl;
-
-          const freshData = {
-            ...res.data,
-            wedding: {
-              ...res.data.wedding,
-              ambientMusicUrl: freshUrl,
-            },
-          };
-          setData(freshData);
-          try {
-            localStorage.setItem("wedding_live_data", JSON.stringify(freshData));
-          } catch {}
+          setData(res.data);
         }
       })
       .catch((e) => console.warn("Background wedding sync:", e));

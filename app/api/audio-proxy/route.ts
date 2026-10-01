@@ -21,13 +21,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Only HTTP/HTTPS allowed" }, { status: 400 });
     }
 
+    const headers: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      Accept: "*/*",
+    };
+
+    if (parsedUrl.hostname.includes("blob.vercel-storage.com") && process.env.BLOB_READ_WRITE_TOKEN) {
+      headers["Authorization"] = `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}`;
+    }
+
     // Fetch on the server without browser CORS restrictions
-    const response = await fetch(targetUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Accept: "*/*",
-      },
-    });
+    const response = await fetch(targetUrl, { headers });
 
     if (!response.ok) {
       return NextResponse.json(

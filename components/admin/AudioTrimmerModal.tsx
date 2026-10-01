@@ -249,8 +249,8 @@ export function AudioTrimmerModal({
   };
 
   // Trim and save
-  const handleTrimAndSave = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleTrimAndSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!title.trim()) {
       setErrorMessage("Please enter a track title");
       return;

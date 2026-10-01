@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { put } from "@vercel/blob";
 import { isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -21,14 +22,15 @@ export async function POST(req: NextRequest) {
     }
 
     const isVercel = process.env.VERCEL === "1";
+    const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 
     // Vercel serverless request & response payloads have a strict 4.5MB limit.
     // In Base64, files expand by 33%, so 3.0MB produces ~4.0MB payload (safely within 4.5MB).
     // In local development, allow up to 35MB.
-    const maxSizeBytes = isVercel ? 3.0 * 1024 * 1024 : 35 * 1024 * 1024;
+    const maxSizeBytes = isVercel ? 3.5 * 1024 * 1024 : 35 * 1024 * 1024;
     if (file.size > maxSizeBytes) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      const limitMb = isVercel ? "3.0MB" : "35MB";
+      const limitMb = isVercel ? "3.5MB" : "35MB";
       return NextResponse.json(
         {
           success: false,
@@ -41,6 +43,41 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // 1. If Vercel Blob is connected, upload to Blob storage
+    if (hasBlobToken) {
+      const cleanName = `uploads/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      try {
+        const blob = await put(cleanName, buffer, {
+          access: "public",
+          contentType: file.type || "application/octet-stream",
+        });
+        return NextResponse.json({
+          success: true,
+          url: blob.url,
+          fileName: file.name,
+        });
+      } catch (pubErr) {
+        // Fall back to private upload if store is configured as Private (e.g. kevinstorage)
+        try {
+          const blob = await put(cleanName, buffer, {
+            access: "private",
+            contentType: file.type || "application/octet-stream",
+          });
+          const returnUrl = file.type?.startsWith("audio/")
+            ? `/api/audio-proxy?url=${encodeURIComponent(blob.url)}`
+            : blob.url;
+          return NextResponse.json({
+            success: true,
+            url: returnUrl,
+            fileName: file.name,
+          });
+        } catch (privErr) {
+          console.error("Vercel Blob upload failed:", privErr);
+        }
+      }
+    }
+
+    // 2. If running on Vercel without Blob token, fallback to Base64 data URI
     if (isVercel) {
       const mime = file.type || "audio/mpeg";
       const base64Data = buffer.toString("base64");

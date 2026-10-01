@@ -101,76 +101,24 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const persistLocalBackup = (updated: WeddingData) => {
     try {
       localStorage.setItem("wedding_live_data", JSON.stringify(updated));
-      if (updated.musicLibrary && updated.musicLibrary.length > 0) {
-        localStorage.setItem("wedding_admin_music_library", JSON.stringify(updated.musicLibrary));
-      }
-      const active = updated.musicLibrary?.find((m) => m.isActive);
-      if (active) {
-        localStorage.setItem("wedding_active_music_url", active.url);
-        localStorage.setItem("wedding_active_music_id", active.id);
-      }
     } catch (err) {
       console.warn("Could not save to localStorage:", err);
     }
   };
 
-  // Hydrate local cache on mount safely without wiping out music library or server data
+  // Hydrate from live server / Vercel Blob storage on mount so any device displays true live state
   React.useEffect(() => {
-    try {
-      const cached = localStorage.getItem("wedding_live_data");
-      const localMusic = localStorage.getItem("wedding_admin_music_library");
-      let parsedMusic: MusicTrack[] = [];
-      if (localMusic) {
-        try {
-          parsedMusic = JSON.parse(localMusic);
-        } catch {}
-      }
-
-      setData((prev) => {
-        let mergedData = { ...prev };
-        if (cached) {
+    fetch("/api/wedding", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data) {
+          setData(res.data);
           try {
-            const parsed = JSON.parse(cached);
-            if (parsed && parsed.wedding) {
-              mergedData = {
-                ...mergedData,
-                ...parsed,
-                wedding: {
-                  ...mergedData.wedding,
-                  ...parsed.wedding,
-                },
-              };
-            }
+            localStorage.setItem("wedding_live_data", JSON.stringify(res.data));
           } catch {}
         }
-
-        // Merge music library by ID across server, live backup, and music storage
-        // This guarantees that refreshing NEVER wipes out any newly uploaded track!
-        const trackMap = new Map<string, MusicTrack>();
-        (prev.musicLibrary || []).forEach((t) => trackMap.set(t.id, t));
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            (parsed.musicLibrary || []).forEach((t: MusicTrack) => trackMap.set(t.id, t));
-          } catch {}
-        }
-        parsedMusic.forEach((t) => trackMap.set(t.id, t));
-
-        const mergedTracks = Array.from(trackMap.values());
-        const activeTrack = mergedTracks.find((m) => m.isActive);
-
-        return {
-          ...mergedData,
-          musicLibrary: mergedTracks,
-          wedding: {
-            ...mergedData.wedding,
-            ambientMusicUrl: activeTrack?.url || mergedData.wedding.ambientMusicUrl,
-          },
-        };
-      });
-    } catch (e) {
-      console.warn("Mount cache error:", e);
-    }
+      })
+      .catch((e) => console.warn("Admin mount sync error:", e));
   }, []);
 
 
@@ -919,6 +867,31 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   
   // Export full wedding store as JSON file
+  // Push all current CMS data to Vercel Blob cloud database
+  const handleSyncAllToCloud = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/wedding", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const resData = await res.json();
+      if (resData.success && resData.data) {
+        setData(resData.data);
+        persistLocalBackup(resData.data);
+        showToast("Live data successfully synced to Cloud & all devices!");
+      } else {
+        showToast(resData.error || "Failed to sync to cloud.");
+      }
+    } catch {
+      showToast("Error syncing with cloud database.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Export full wedding store as JSON file
   const handleExportFullJson = () => {
     const jsonStr = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonStr], { type: "application/json" });
@@ -996,6 +969,27 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
         {/* Right actions */}
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSyncAllToCloud}
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shadow-sm disabled:opacity-50"
+            title="Push all current CMS state to Vercel Blob cloud database"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>{isSaving ? "Syncing..." : "Sync All to Cloud"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportFullJson}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#E9E1D5] bg-white hover:bg-[#F8F5EF] text-[#5A524A] transition-colors"
+            title="Download wedding-store.json for local backup or git commit"
+          >
+            <Download className="w-3.5 h-3.5 text-[#9E814D]" />
+            <span>Backup JSON</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setSplitPreview(!splitPreview)}
