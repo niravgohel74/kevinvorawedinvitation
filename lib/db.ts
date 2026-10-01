@@ -105,8 +105,21 @@ function writeLocalBackup(data: WeddingData): void {
 }
 
 export function getBlobToken(): string | undefined {
+  // Static property accesses ensure Next.js / Webpack bundles these environment variables
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     return process.env.BLOB_READ_WRITE_TOKEN;
+  }
+  if ((process.env as any).KEVINSTORAGE_READ_WRITE_TOKEN) {
+    return (process.env as any).KEVINSTORAGE_READ_WRITE_TOKEN;
+  }
+  if ((process.env as any).KEVIN_STORAGE_READ_WRITE_TOKEN) {
+    return (process.env as any).KEVIN_STORAGE_READ_WRITE_TOKEN;
+  }
+  if ((process.env as any).STORAGE_READ_WRITE_TOKEN) {
+    return (process.env as any).STORAGE_READ_WRITE_TOKEN;
+  }
+  if ((process.env as any).VERCEL_BLOB_READ_WRITE_TOKEN) {
+    return (process.env as any).VERCEL_BLOB_READ_WRITE_TOKEN;
   }
   // 1. Detect any env var ending in _READ_WRITE_TOKEN or containing BLOB
   for (const [key, val] of Object.entries(process.env)) {

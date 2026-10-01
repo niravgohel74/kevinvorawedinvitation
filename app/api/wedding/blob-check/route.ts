@@ -10,11 +10,16 @@ export async function GET() {
   const isVercel = process.env.VERCEL === "1";
 
   if (!token) {
+    const relevantKeys = Object.keys(process.env).filter(
+      (k) => k.includes("TOKEN") || k.includes("BLOB") || k.includes("STORAGE") || k.includes("KEVIN")
+    );
     return NextResponse.json({
       configured: false,
       isVercel,
+      relevantKeys,
+      allKeysCount: Object.keys(process.env).length,
       message:
-        "BLOB_READ_WRITE_TOKEN is missing. If you are on localhost, copy the token from Vercel Blob store (.env.local tab) into your local .env.local file. If you are deployed on Vercel, link the Blob store to your project in Vercel Dashboard -> Storage -> Connect to Project.",
+        "BLOB_READ_WRITE_TOKEN is missing. If you are on localhost, copy the token from Vercel Blob store (.env.local tab) into your local .env.local file. If you are deployed on Vercel, check Environment Variables in Vercel Dashboard.",
       blobs: [],
     });
   }
