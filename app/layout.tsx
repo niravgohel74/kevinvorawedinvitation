@@ -1,28 +1,6 @@
 import type { Viewport, Metadata } from "next";
-import { Cormorant_Garamond, Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
-
-const cormorant = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-cormorant",
-  display: "swap",
-});
-
-const playfair = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-playfair",
-  display: "swap",
-});
-
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-sans",
-  display: "swap",
-});
 
 export const viewport: Viewport = {
   themeColor: "#161514",
@@ -104,8 +82,10 @@ export default function RootLayout({
   const ogImageUrl = `${siteUrl}/og-image.jpg?v=3`;
 
   return (
-    <html lang="en" className={`${cormorant.variable} ${playfair.variable} ${jakarta.variable}`}>
+    <html lang="en" className="scroll-smooth">
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Core meta and direct tags placed at top of head for fastest crawler detection */}
         <title>{SITE_TITLE}</title>
         <meta name="description" content={SITE_DESC} />
