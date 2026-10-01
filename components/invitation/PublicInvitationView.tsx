@@ -49,17 +49,13 @@ export function PublicInvitationView({
         if (!res.ok) return;
         const json = await res.json();
         if (isMounted && json.success && json.data) {
-          const serverVersion = Number(json.version || 0);
-          const currentLocalVersion = localVersionRef.current;
-
-          // If this browser has a newer local version from recent edits, don't overwrite with older server data
-          if (currentLocalVersion > 0 && serverVersion > 0 && currentLocalVersion > serverVersion) {
-            return;
-          }
-
           setData(json.data);
           if (json.version) {
-            localVersionRef.current = json.version;
+            localVersionRef.current = Number(json.version);
+            try {
+              localStorage.setItem("wedding_live_data", JSON.stringify(json.data));
+              localStorage.setItem("wedding_data_version", json.version.toString());
+            } catch {}
           }
         }
       } catch (e) {

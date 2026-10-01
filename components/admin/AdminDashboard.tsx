@@ -97,12 +97,24 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     notes: "",
   });
 
+  // Version tracker to prevent redundant re-fetching and support cross-device sync
+  const currentVersionRef = useRef<number>(
+    initialData?.wedding?.updatedAt ? new Date(initialData.wedding.updatedAt).getTime() : Date.now()
+  );
+  const isSavingRef = useRef<boolean>(isSaving);
+  isSavingRef.current = isSaving;
+
   // Helper to broadcast live updates in real-time (0ms) across all tabs, split views, and devices
   const broadcastLiveData = (updated: WeddingData) => {
     setData(updated);
+    const ver = updated?.wedding?.updatedAt
+      ? new Date(updated.wedding.updatedAt).getTime()
+      : Date.now();
+    currentVersionRef.current = ver;
+
     try {
       localStorage.setItem("wedding_live_data", JSON.stringify(updated));
-      localStorage.setItem("wedding_data_version", Date.now().toString());
+      localStorage.setItem("wedding_data_version", ver.toString());
     } catch (err) {
       console.warn("Could not save to localStorage:", err);
     }
@@ -114,7 +126,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         channel.postMessage({
           type: "LIVE_DATA_UPDATE",
           data: updated,
-          timestamp: Date.now(),
+          timestamp: ver,
         });
         channel.close();
       }
@@ -147,93 +159,131 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       .catch(() => setCloudStatus(null));
   }, []);
 
-  // Smart Hydration & Conflict-Free Server Sync:
-  // If the user made edits on live Vercel and then redeployed code via git push,
-  // the serverless container restarts with default repository files.
-  // Instead of wiping the browser's localStorage, we detect local changes and automatically
-  // restore them to the live server (PUT /api/wedding) so zero edits are ever lost!
+  // Multi-Device Real-Time Cloud Sync Engine:
+  // Vercel Blob cloud storage is the single source of truth across all devices (laptop, mobile, tablet).
+  // On mount, tab focus, and background heartbeat, we synchronize with the cloud database.
+  // We NEVER automatically overwrite the cloud store with stale browser localStorage!
   React.useEffect(() => {
-    let localData: WeddingData | null = null;
-    let localVersion = 0;
-    try {
-      const stored = localStorage.getItem("wedding_live_data");
-      if (stored) {
-        localData = JSON.parse(stored);
-      }
-      const v = localStorage.getItem("wedding_data_version");
-      if (v) localVersion = Number(v);
-    } catch {}
+    let isMounted = true;
 
-    if (localData?.wedding?.groomName) {
-      setData(localData);
-    }
-
+    // A. Initial cloud hydration: pull the freshest data from Vercel Cloud DB
     fetch("/api/wedding", { cache: "no-store" })
       .then((r) => r.json())
-      .then(async (res) => {
-        if (res.success && res.data) {
-          const serverData = res.data as WeddingData;
-          const serverVersion = Number(res.version || 0);
-
-          const localUpdated = localData?.wedding?.updatedAt
-            ? new Date(localData.wedding.updatedAt).getTime()
-            : 0;
-          const serverUpdated = serverData.wedding?.updatedAt
-            ? new Date(serverData.wedding.updatedAt).getTime()
-            : 0;
-
-          // Check if local has tracks in musicLibrary that server lacks
-          const localHasNewTracks =
-            (localData?.musicLibrary?.length || 0) > (serverData.musicLibrary?.length || 0) ||
-            Boolean(
-              localData?.musicLibrary?.some(
-                (m) => !serverData.musicLibrary?.some((sm) => sm.id === m.id || sm.url === m.url)
-              )
-            );
-
-          const localHasCustomAmbient = Boolean(
-            localData?.wedding?.ambientMusicUrl &&
-              localData.wedding.ambientMusicUrl !== serverData.wedding?.ambientMusicUrl
-          );
-
-          const localIsNewer =
-            (localVersion > 0 && localVersion > serverVersion) ||
-            (localUpdated > 0 && localUpdated > serverUpdated) ||
-            localHasNewTracks ||
-            localHasCustomAmbient;
-
-          if (localIsNewer && localData) {
-            console.log("[Auto-Restore] Browser has newer custom edits than server. Restoring server...");
-            setData(localData);
-            showToast("Restoring your previous edits & music to the updated live deployment...");
-
-            try {
-              const restoreRes = await fetch("/api/wedding", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(localData),
-              });
-              const restoreJson = await restoreRes.json();
-              if (restoreJson.success) {
-                showToast("✅ Successfully restored your previous edits & music to the live server!");
-                localStorage.setItem("wedding_data_version", Date.now().toString());
-              }
-            } catch (err) {
-              console.warn("Auto-restore PUT error:", err);
-            }
-          } else {
-            // Server is newer or in sync
-            setData(serverData);
-            try {
-              localStorage.setItem("wedding_live_data", JSON.stringify(serverData));
-              localStorage.setItem("wedding_data_version", (res.version || Date.now()).toString());
-            } catch {}
-          }
+      .then((res) => {
+        if (isMounted && res.success && res.data) {
+          setData(res.data);
+          const ver = Number(res.version) || Date.now();
+          currentVersionRef.current = ver;
+          try {
+            localStorage.setItem("wedding_live_data", JSON.stringify(res.data));
+            localStorage.setItem("wedding_data_version", ver.toString());
+          } catch {}
         }
       })
       .catch((e) => console.warn("Admin mount sync error:", e));
 
     checkCloudStatus();
+
+    // B. BroadcastChannel for instant inter-tab sync on same machine
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel("wedding_live_sync");
+        channel.onmessage = (event) => {
+          if (event.data?.type === "LIVE_DATA_UPDATE" && event.data?.data) {
+            if (isMounted) {
+              setData(event.data.data);
+              if (event.data.timestamp) {
+                currentVersionRef.current = event.data.timestamp;
+              }
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel not supported:", e);
+    }
+
+    // C. Storage event fallback for other open tabs
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "wedding_live_data" && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (isMounted && updated?.wedding) {
+            setData(updated);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    // D. Auto-sync when tab gains focus or mobile screen unlocks
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        const activeTag = document.activeElement?.tagName?.toLowerCase();
+        if (activeTag === "input" || activeTag === "textarea") return;
+
+        try {
+          const res = await fetch("/api/wedding", { cache: "no-store" });
+          if (res.ok) {
+            const json = await res.json();
+            if (isMounted && json.success && json.data) {
+              const serverVer = Number(json.version) || 0;
+              if (serverVer > currentVersionRef.current) {
+                currentVersionRef.current = serverVer;
+                setData(json.data);
+                try {
+                  localStorage.setItem("wedding_live_data", JSON.stringify(json.data));
+                  localStorage.setItem("wedding_data_version", serverVer.toString());
+                } catch {}
+                showToast("🔄 Synced latest updates from cloud!");
+              }
+            }
+          }
+        } catch {}
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // E. 3-Second Heartbeat Poller for Cross-Device Sync (e.g. edits on phone -> appear on laptop)
+    const interval = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      if (isSavingRef.current) return;
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === "input" || activeTag === "textarea") return;
+
+      try {
+        const vRes = await fetch("/api/wedding/version", { cache: "no-store" });
+        if (vRes.ok) {
+          const { version } = await vRes.json();
+          if (version && version > currentVersionRef.current) {
+            const dRes = await fetch("/api/wedding", { cache: "no-store" });
+            if (dRes.ok) {
+              const dJson = await dRes.json();
+              if (isMounted && dJson.success && dJson.data) {
+                currentVersionRef.current = Number(dJson.version) || version;
+                setData(dJson.data);
+                try {
+                  localStorage.setItem("wedding_live_data", JSON.stringify(dJson.data));
+                  localStorage.setItem("wedding_data_version", currentVersionRef.current.toString());
+                } catch {}
+                showToast("🔄 Synced latest updates from other device!");
+              }
+            }
+          }
+        }
+      } catch {}
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      if (channel) channel.close();
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      clearInterval(interval);
+    };
   }, [checkCloudStatus]);
 
 
@@ -303,8 +353,11 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        persistLocalBackup(data);
+        const nextData = { ...data, wedding: { ...data.wedding, ...resData.data } };
+        persistLocalBackup(nextData);
         showToast("Wedding details successfully updated!");
+      } else {
+        showToast(resData.error || "Error saving wedding details.");
       }
     } catch {
       showToast("Error saving wedding details.");
@@ -324,8 +377,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        persistLocalBackup(data);
+        const nextData = {
+          ...data,
+          couple: { ...data.couple, ...resData.data },
+          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+        };
+        persistLocalBackup(nextData);
         showToast("Couple profile updated successfully!");
+      } else {
+        showToast(resData.error || "Error updating couple info.");
       }
     } catch {
       showToast("Error updating couple info.");
@@ -345,8 +405,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        persistLocalBackup(data);
+        const nextData = {
+          ...data,
+          venue: { ...data.venue, ...resData.data },
+          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+        };
+        persistLocalBackup(nextData);
         showToast("Venue information saved!");
+      } else {
+        showToast(resData.error || "Error updating venue.");
       }
     } catch {
       showToast("Error updating venue.");
@@ -366,8 +433,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        persistLocalBackup(data);
+        const nextData = {
+          ...data,
+          family: { ...data.family, ...resData.data },
+          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+        };
+        persistLocalBackup(nextData);
         showToast("Family blessings saved!");
+      } else {
+        showToast(resData.error || "Error updating family blessings.");
       }
     } catch {
       showToast("Error updating family blessings.");
@@ -384,9 +458,17 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data.sectionVisibility),
       });
+      const resData = await res.json();
       if (res.ok) {
-        persistLocalBackup(data);
+        const nextData = {
+          ...data,
+          sectionVisibility: resData.data || data.sectionVisibility,
+          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+        };
+        persistLocalBackup(nextData);
         showToast("Section visibility preferences saved!");
+      } else {
+        showToast(resData?.error || "Error saving section visibility.");
       }
     } catch {
       showToast("Error saving section visibility.");
@@ -681,7 +763,9 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const nextData = {
           ...data,
           musicLibrary: updatedList,
-          wedding: updated.isActive ? { ...data.wedding, ambientMusicUrl: updated.url } : data.wedding,
+          wedding: updated.isActive
+            ? { ...data.wedding, ambientMusicUrl: updated.url, updatedAt: new Date().toISOString() }
+            : { ...data.wedding, updatedAt: new Date().toISOString() },
         };
         setData(nextData);
         persistLocalBackup(nextData);
@@ -706,7 +790,9 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const nextData = {
           ...data,
           musicLibrary: nextList,
-          wedding: updated.isActive ? { ...data.wedding, ambientMusicUrl: resJson.data.url } : data.wedding,
+          wedding: updated.isActive
+            ? { ...data.wedding, ambientMusicUrl: resJson.data.url, updatedAt: new Date().toISOString() }
+            : { ...data.wedding, updatedAt: new Date().toISOString() },
         };
         setData(nextData);
         persistLocalBackup(nextData);
@@ -783,7 +869,9 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const nextData = {
           ...data,
           musicLibrary: nextList,
-          wedding: newMusic.isActive ? { ...data.wedding, ambientMusicUrl: resData.data.url } : data.wedding,
+          wedding: newMusic.isActive
+            ? { ...data.wedding, ambientMusicUrl: resData.data.url, updatedAt: new Date().toISOString() }
+            : { ...data.wedding, updatedAt: new Date().toISOString() },
         };
         setData(nextData);
         persistLocalBackup(nextData);
@@ -845,7 +933,11 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const nextData = {
           ...data,
           musicLibrary: updatedLibrary,
-          wedding: { ...data.wedding, ambientMusicUrl: resData.data.url },
+          wedding: {
+            ...data.wedding,
+            ambientMusicUrl: resData.data.url,
+            updatedAt: new Date().toISOString(),
+          },
         };
         setData(nextData);
         persistLocalBackup(nextData);
@@ -866,6 +958,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         const nextData = {
           ...data,
           musicLibrary: nextList,
+          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
         };
         setData(nextData);
         persistLocalBackup(nextData);

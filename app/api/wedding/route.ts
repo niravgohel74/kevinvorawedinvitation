@@ -4,11 +4,13 @@ import { isAuthenticated } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET() {
   try {
-    const data = await getWeddingData();
-    const version = getStoreVersion();
+    const data = await getWeddingData(true);
+    const timestamp = data.wedding?.updatedAt ? new Date(data.wedding.updatedAt).getTime() : 0;
+    const version = Math.max(timestamp, getStoreVersion());
     return NextResponse.json(
       { success: true, data, version },
       {

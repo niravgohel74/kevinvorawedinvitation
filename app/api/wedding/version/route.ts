@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
-import { getStoreVersion } from "@/lib/db";
+import { getWeddingData, getStoreVersion } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET() {
-  const version = getStoreVersion();
+  const data = await getWeddingData(true);
+  const timestamp = data.wedding?.updatedAt ? new Date(data.wedding.updatedAt).getTime() : 0;
+  const version = Math.max(timestamp, getStoreVersion());
   return NextResponse.json(
-    { version },
+    { version, updatedAt: data.wedding?.updatedAt },
     {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
