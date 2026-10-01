@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { GuestWishRecord } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { MessageSquareHeart, Send, Check } from "lucide-react";
@@ -10,6 +10,11 @@ interface WishesSectionProps {
 
 export function WishesSection({ initialWishes = [] }: WishesSectionProps) {
   const [wishes, setWishes] = useState<GuestWishRecord[]>(initialWishes);
+
+  useEffect(() => {
+    setWishes(initialWishes);
+  }, [initialWishes]);
+
   const [name, setName] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);

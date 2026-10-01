@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { put, list, get } from "@vercel/blob";
+import { revalidatePath } from "next/cache";
 import {
   WeddingData,
   WeddingDetails,
@@ -29,6 +30,11 @@ const BLOB_STORE_PATH = "wedding-data/store.json";
 let memoryCache: WeddingData | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 1500; // 1.5 seconds TTL
+let storeVersion = Date.now();
+
+export function getStoreVersion(): number {
+  return storeVersion;
+}
 
 function deepMergeWeddingData(parsed: any): WeddingData {
   if (!parsed || typeof parsed !== "object") {
@@ -98,13 +104,36 @@ function writeLocalBackup(data: WeddingData): void {
   }
 }
 
+export function getBlobToken(): string | undefined {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return process.env.BLOB_READ_WRITE_TOKEN;
+  }
+  // 1. Detect any env var ending in _READ_WRITE_TOKEN or containing BLOB
+  for (const [key, val] of Object.entries(process.env)) {
+    if (
+      typeof val === "string" &&
+      (key.endsWith("_READ_WRITE_TOKEN") || key.includes("BLOB")) &&
+      val.startsWith("vercel_blob_rw_")
+    ) {
+      return val;
+    }
+  }
+  // 2. Fallback: inspect all env vars for any standard Vercel Blob read-write prefix
+  for (const [, val] of Object.entries(process.env)) {
+    if (typeof val === "string" && val.startsWith("vercel_blob_rw_")) {
+      return val;
+    }
+  }
+  return undefined;
+}
+
 async function readBlobStore(): Promise<any | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = getBlobToken();
   if (!token) return null;
 
   // 1. Try reading with private access first (matches Private stores like kevinstorage)
   try {
-    const res = await get(BLOB_STORE_PATH, { access: "private", useCache: false });
+    const res = await get(BLOB_STORE_PATH, { access: "private", token, useCache: false });
     if (res && res.statusCode === 200) {
       const text = await new Response(res.stream).text();
       return JSON.parse(text);
@@ -115,7 +144,7 @@ async function readBlobStore(): Promise<any | null> {
 
   // 2. Try reading with public access (if store is Public)
   try {
-    const res = await get(BLOB_STORE_PATH, { access: "public", useCache: false });
+    const res = await get(BLOB_STORE_PATH, { access: "public", token, useCache: false });
     if (res && res.statusCode === 200) {
       const text = await new Response(res.stream).text();
       return JSON.parse(text);
@@ -126,7 +155,7 @@ async function readBlobStore(): Promise<any | null> {
 
   // 3. Fallback: list()
   try {
-    const { blobs } = await list({ prefix: BLOB_STORE_PATH });
+    const { blobs } = await list({ prefix: BLOB_STORE_PATH, token });
     if (blobs && blobs.length > 0) {
       const newest = blobs.sort(
         (a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()
@@ -158,9 +187,9 @@ export interface BlobSyncResult {
 }
 
 export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = getBlobToken();
   if (!token) {
-    console.warn("[Vercel Blob] BLOB_READ_WRITE_TOKEN is not defined in environment.");
+    console.warn("[Vercel Blob] No Blob token found in environment variables.");
     return {
       blobSaved: false,
       isConfigured: false,
@@ -174,6 +203,7 @@ export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult>
   try {
     const blob = await put(BLOB_STORE_PATH, jsonStr, {
       access: "private",
+      token,
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: "application/json",
@@ -186,6 +216,7 @@ export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult>
     try {
       const blob = await put(BLOB_STORE_PATH, jsonStr, {
         access: "public",
+        token,
         addRandomSuffix: false,
         allowOverwrite: true,
         contentType: "application/json",
@@ -201,7 +232,8 @@ export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult>
 }
 
 async function ensureStore(): Promise<WeddingData> {
-  const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  const token = getBlobToken();
+  const hasBlobToken = Boolean(token);
 
   if (memoryCache && Date.now() - lastCacheTime < CACHE_TTL_MS) {
     return memoryCache;
@@ -249,10 +281,16 @@ async function saveStore(data: WeddingData): Promise<BlobSyncResult> {
   const merged = deepMergeWeddingData(data);
   memoryCache = merged;
   lastCacheTime = Date.now();
+  storeVersion = Date.now();
 
   writeLocalBackup(merged);
 
-  const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  try {
+    revalidatePath("/");
+    revalidatePath("/admin");
+  } catch {}
+
+  const hasBlobToken = Boolean(getBlobToken());
   if (hasBlobToken) {
     return await writeBlobStore(merged);
   }

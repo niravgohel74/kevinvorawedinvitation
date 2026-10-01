@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { WeddingData } from "@/types/wedding";
 import { EnvelopeIntro } from "@/components/invitation/EnvelopeIntro";
 import { HeroSection } from "@/components/invitation/HeroSection";
@@ -29,17 +29,135 @@ export function PublicInvitationView({
 }: PublicInvitationViewProps) {
   const [data, setData] = useState<WeddingData>(initialData);
   const [isOpened, setIsOpened] = useState(isEmbedPreview);
+  const localVersionRef = useRef<number>(0);
 
-  // Sync latest wedding data dynamically on mount across all devices
+  // 1. Sync immediately whenever initialData prop updates (e.g. Split Live Preview inside Admin)
   useEffect(() => {
-    fetch("/api/wedding", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.data) {
-          setData(res.data);
+    if (initialData) {
+      setData(initialData);
+    }
+  }, [initialData]);
+
+  // 2. Real-time multi-layered sync engine (inter-tab 0ms broadcast, storage events, and cross-device heartbeat)
+  useEffect(() => {
+    let isMounted = true;
+
+    // Helper to fetch latest data from server
+    const fetchLatestServerData = async () => {
+      try {
+        const res = await fetch("/api/wedding", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (isMounted && json.success && json.data) {
+          const serverVersion = Number(json.version || 0);
+          const currentLocalVersion = localVersionRef.current;
+
+          // If this browser has a newer local version from recent edits, don't overwrite with older server data
+          if (currentLocalVersion > 0 && serverVersion > 0 && currentLocalVersion > serverVersion) {
+            return;
+          }
+
+          setData(json.data);
+          if (json.version) {
+            localVersionRef.current = json.version;
+          }
         }
-      })
-      .catch((e) => console.warn("Background wedding sync:", e));
+      } catch (e) {
+        // silent background failure
+      }
+    };
+
+    // Immediate hydration from local storage if available on this browser
+    try {
+      const stored = localStorage.getItem("wedding_live_data");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.wedding?.groomName) {
+          setData(parsed);
+        }
+      }
+      const v = localStorage.getItem("wedding_data_version");
+      if (v) localVersionRef.current = Number(v);
+    } catch {}
+
+    // Initial server fetch to ensure complete cloud parity
+    fetchLatestServerData();
+
+    // A. BroadcastChannel for INSTANT (0ms) sync across tabs on the same browser
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel("wedding_live_sync");
+        channel.onmessage = (event) => {
+          if (event.data?.type === "LIVE_DATA_UPDATE" && event.data?.data) {
+            if (isMounted) {
+              setData(event.data.data);
+              if (event.data.timestamp) {
+                localVersionRef.current = event.data.timestamp;
+              }
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel not supported:", e);
+    }
+
+    // B. LocalStorage storage event fallback (for other open tabs)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "wedding_live_data" && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (isMounted && updated?.wedding) {
+            setData(updated);
+          }
+        } catch {}
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    // C. Custom window event (for same window / split views)
+    const handleCustomEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<WeddingData>;
+      if (isMounted && customEvent.detail) {
+        setData(customEvent.detail);
+      }
+    };
+    window.addEventListener("wedding_data_updated", handleCustomEvent);
+
+    // D. Auto-refresh when tab gains focus or user unlocks mobile screen
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchLatestServerData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // E. Lightweight background version heartbeat for cross-device updates (e.g. mobile <-> laptop)
+    const interval = setInterval(async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const vRes = await fetch("/api/wedding/version", { cache: "no-store" });
+        if (vRes.ok) {
+          const { version } = await vRes.json();
+          if (version && version > localVersionRef.current) {
+            localVersionRef.current = version;
+            await fetchLatestServerData();
+          }
+        }
+      } catch {}
+    }, 3500);
+
+    return () => {
+      isMounted = false;
+      if (channel) channel.close();
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("wedding_data_updated", handleCustomEvent);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      clearInterval(interval);
+    };
   }, []);
 
   const vis = data.sectionVisibility || {

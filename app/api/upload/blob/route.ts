@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { isAuthenticated } from "@/lib/auth";
+import { getBlobToken } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -9,9 +10,11 @@ export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as HandleUploadBody;
+    const blobToken = getBlobToken();
     const response = await handleUpload({
       body,
       request,
+      token: blobToken,
       onBeforeGenerateToken: async (pathname) => {
         const authenticated = await isAuthenticated();
         if (!authenticated) throw new Error("Unauthorized upload request.");

@@ -97,14 +97,38 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     notes: "",
   });
 
-  // Helper to persist backup locally in browser storage for instant preview hydration
-  const persistLocalBackup = (updated: WeddingData) => {
+  // Helper to broadcast live updates in real-time (0ms) across all tabs, split views, and devices
+  const broadcastLiveData = (updated: WeddingData) => {
+    setData(updated);
     try {
       localStorage.setItem("wedding_live_data", JSON.stringify(updated));
+      localStorage.setItem("wedding_data_version", Date.now().toString());
     } catch (err) {
       console.warn("Could not save to localStorage:", err);
     }
+
+    // 1. Instant 0ms BroadcastChannel across open tabs (e.g., "VIEW INVITATION")
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        const channel = new BroadcastChannel("wedding_live_sync");
+        channel.postMessage({
+          type: "LIVE_DATA_UPDATE",
+          data: updated,
+          timestamp: Date.now(),
+        });
+        channel.close();
+      }
+    } catch (err) {
+      console.warn("BroadcastChannel error:", err);
+    }
+
+    // 2. Custom window event for same-tab / embedded split views
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wedding_data_updated", { detail: updated }));
+    }
   };
+
+  const persistLocalBackup = broadcastLiveData;
 
   // Cloud storage status state
   const [cloudStatus, setCloudStatus] = useState<{
@@ -123,16 +147,88 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       .catch(() => setCloudStatus(null));
   }, []);
 
-  // Hydrate from live server / Vercel Blob storage on mount so any device displays true live state
+  // Smart Hydration & Conflict-Free Server Sync:
+  // If the user made edits on live Vercel and then redeployed code via git push,
+  // the serverless container restarts with default repository files.
+  // Instead of wiping the browser's localStorage, we detect local changes and automatically
+  // restore them to the live server (PUT /api/wedding) so zero edits are ever lost!
   React.useEffect(() => {
+    let localData: WeddingData | null = null;
+    let localVersion = 0;
+    try {
+      const stored = localStorage.getItem("wedding_live_data");
+      if (stored) {
+        localData = JSON.parse(stored);
+      }
+      const v = localStorage.getItem("wedding_data_version");
+      if (v) localVersion = Number(v);
+    } catch {}
+
+    if (localData?.wedding?.groomName) {
+      setData(localData);
+    }
+
     fetch("/api/wedding", { cache: "no-store" })
       .then((r) => r.json())
-      .then((res) => {
+      .then(async (res) => {
         if (res.success && res.data) {
-          setData(res.data);
-          try {
-            localStorage.setItem("wedding_live_data", JSON.stringify(res.data));
-          } catch {}
+          const serverData = res.data as WeddingData;
+          const serverVersion = Number(res.version || 0);
+
+          const localUpdated = localData?.wedding?.updatedAt
+            ? new Date(localData.wedding.updatedAt).getTime()
+            : 0;
+          const serverUpdated = serverData.wedding?.updatedAt
+            ? new Date(serverData.wedding.updatedAt).getTime()
+            : 0;
+
+          // Check if local has tracks in musicLibrary that server lacks
+          const localHasNewTracks =
+            (localData?.musicLibrary?.length || 0) > (serverData.musicLibrary?.length || 0) ||
+            Boolean(
+              localData?.musicLibrary?.some(
+                (m) => !serverData.musicLibrary?.some((sm) => sm.id === m.id || sm.url === m.url)
+              )
+            );
+
+          const localHasCustomAmbient = Boolean(
+            localData?.wedding?.ambientMusicUrl &&
+              localData.wedding.ambientMusicUrl !== serverData.wedding?.ambientMusicUrl
+          );
+
+          const localIsNewer =
+            (localVersion > 0 && localVersion > serverVersion) ||
+            (localUpdated > 0 && localUpdated > serverUpdated) ||
+            localHasNewTracks ||
+            localHasCustomAmbient;
+
+          if (localIsNewer && localData) {
+            console.log("[Auto-Restore] Browser has newer custom edits than server. Restoring server...");
+            setData(localData);
+            showToast("Restoring your previous edits & music to the updated live deployment...");
+
+            try {
+              const restoreRes = await fetch("/api/wedding", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(localData),
+              });
+              const restoreJson = await restoreRes.json();
+              if (restoreJson.success) {
+                showToast("✅ Successfully restored your previous edits & music to the live server!");
+                localStorage.setItem("wedding_data_version", Date.now().toString());
+              }
+            } catch (err) {
+              console.warn("Auto-restore PUT error:", err);
+            }
+          } else {
+            // Server is newer or in sync
+            setData(serverData);
+            try {
+              localStorage.setItem("wedding_live_data", JSON.stringify(serverData));
+              localStorage.setItem("wedding_data_version", (res.version || Date.now()).toString());
+            } catch {}
+          }
         }
       })
       .catch((e) => console.warn("Admin mount sync error:", e));
@@ -249,6 +345,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        persistLocalBackup(data);
         showToast("Venue information saved!");
       }
     } catch {
@@ -317,7 +414,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        setData({ ...data, events: [...data.events, resData.data] });
+        const nextData = { ...data, events: [...data.events, resData.data] };
+        persistLocalBackup(nextData);
         setNewEventModal(false);
         showToast("New event added!");
       }
@@ -331,7 +429,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     try {
       const res = await fetch(`/api/events/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setData({ ...data, events: data.events.filter((e) => e.id !== id) });
+        const nextData = { ...data, events: data.events.filter((e) => e.id !== id) };
+        persistLocalBackup(nextData);
         showToast("Event removed.");
       }
     } catch {
@@ -349,7 +448,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     reordered[newIdx] = temp;
 
     const orderIds = reordered.map((e) => e.id);
-    setData({ ...data, events: reordered });
+    const nextData = { ...data, events: reordered };
+    persistLocalBackup(nextData);
 
     try {
       await fetch("/api/events", {
@@ -374,7 +474,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       order: data.story.length + 1,
     };
     const updated = [...data.story, newItem];
-    setData({ ...data, story: updated });
+    const nextData = { ...data, story: updated };
+    persistLocalBackup(nextData);
     await fetch("/api/story", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -385,7 +486,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   const handleDeleteStory = async (id: string) => {
     const updated = data.story.filter((s) => s.id !== id);
-    setData({ ...data, story: updated });
+    const nextData = { ...data, story: updated };
+    persistLocalBackup(nextData);
     await fetch("/api/story", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -406,6 +508,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data.story),
     });
+    persistLocalBackup(data);
     setIsSaving(false);
     showToast("Story changes saved!");
   };
@@ -420,7 +523,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       order: data.timeline.length + 1,
     };
     const updated = [...data.timeline, newItem];
-    setData({ ...data, timeline: updated });
+    const nextData = { ...data, timeline: updated };
+    persistLocalBackup(nextData);
     await fetch("/api/timeline", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -431,7 +535,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   const handleDeleteTimeline = async (id: string) => {
     const updated = data.timeline.filter((t) => t.id !== id);
-    setData({ ...data, timeline: updated });
+    const nextData = { ...data, timeline: updated };
+    persistLocalBackup(nextData);
     await fetch("/api/timeline", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -447,6 +552,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data.timeline),
     });
+    persistLocalBackup(data);
     setIsSaving(false);
     showToast("Timeline schedule saved!");
   };
@@ -463,7 +569,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        setData({ ...data, gallery: [...data.gallery, resData.data] });
+        const nextData = { ...data, gallery: [...data.gallery, resData.data] };
+        persistLocalBackup(nextData);
         setNewGalleryModal(false);
         setNewGalleryItem({ url: "", caption: "", category: "ceremony", aspect: "landscape" });
         showToast("Image added to gallery!");
@@ -477,7 +584,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     try {
       const res = await fetch(`/api/gallery/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setData({ ...data, gallery: data.gallery.filter((g) => g.id !== id) });
+        const nextData = { ...data, gallery: data.gallery.filter((g) => g.id !== id) };
+        persistLocalBackup(nextData);
         showToast("Image deleted.");
       }
     } catch {
@@ -497,7 +605,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        setData({ ...data, shagun: [resData.data, ...(data.shagun || [])] });
+        const nextData = { ...data, shagun: [resData.data, ...(data.shagun || [])] };
+        persistLocalBackup(nextData);
         setNewShagunModal(false);
         setNewShagun({
           guestName: "",
@@ -523,7 +632,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     try {
       const res = await fetch(`/api/shagun/${shagunToDelete.id}`, { method: "DELETE" });
       if (res.ok) {
-        setData({ ...data, shagun: (data.shagun || []).filter((s) => s.id !== shagunToDelete.id) });
+        const nextData = { ...data, shagun: (data.shagun || []).filter((s) => s.id !== shagunToDelete.id) };
+        persistLocalBackup(nextData);
         showToast("Shagun record deleted from register.");
         setShagunToDelete(null);
       } else {
@@ -840,10 +950,11 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         body: JSON.stringify({ id, status }),
       });
       if (res.ok) {
-        setData({
+        const nextData = {
           ...data,
           wishes: data.wishes.map((w) => (w.id === id ? { ...w, status } : w)),
-        });
+        };
+        persistLocalBackup(nextData);
         showToast(`Wish marked as ${status}.`);
       }
     } catch {
@@ -856,7 +967,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     try {
       const res = await fetch(`/api/wishes/${id}`, { method: "DELETE" });
       if (res.ok) {
-        setData({ ...data, wishes: data.wishes.filter((w) => w.id !== id) });
+        const nextData = { ...data, wishes: data.wishes.filter((w) => w.id !== id) };
+        persistLocalBackup(nextData);
         showToast("Wish removed.");
       }
     } catch {
@@ -1052,6 +1164,20 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
             <span>Backup JSON</span>
           </button>
 
+          <label
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#E9E1D5] bg-white hover:bg-[#F8F5EF] text-[#5A524A] cursor-pointer transition-colors"
+            title="Restore from a downloaded JSON backup"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#9E814D]" />
+            <span>Restore JSON</span>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleImportJsonFile}
+              className="hidden"
+            />
+          </label>
+
           <button
             type="button"
             onClick={() => setSplitPreview(!splitPreview)}
@@ -1085,6 +1211,32 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           </button>
         </div>
       </header>
+
+      {/* Cloud Persistence Alert Banner if deployed on Vercel without connected Blob store */}
+      {cloudStatus?.isVercel && !cloudStatus.configured && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
+          <div className="flex items-start sm:items-center gap-2">
+            <span className="text-base leading-none">⚠️</span>
+            <div>
+              <span className="font-semibold text-amber-950">Keep changes permanently across code updates:</span>
+              {" "}Your Vercel project is in local mode. Changes are currently preserved in this browser. To keep all data &amp; music permanently across code pushes, connect your Blob store in Vercel:
+              <span className="inline-block ml-1 font-mono text-[11px] bg-amber-100/70 text-amber-800 px-1.5 py-0.5 rounded">
+                Vercel Dashboard → Storage tab → Connect your store (kevinstorage) to this project
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            <button
+              type="button"
+              onClick={handleSyncAllToCloud}
+              disabled={isSaving}
+              className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded font-medium text-[11px] transition-colors shadow-xs disabled:opacity-50"
+            >
+              {isSaving ? "Syncing..." : "Sync Edits Now"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Body */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">

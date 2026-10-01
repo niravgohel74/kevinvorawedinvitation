@@ -4,6 +4,8 @@ import path from "path";
 import { put } from "@vercel/blob";
 import { isAuthenticated } from "@/lib/auth";
 
+import { getBlobToken } from "@/lib/db";
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -22,7 +24,8 @@ export async function POST(req: NextRequest) {
     }
 
     const isVercel = process.env.VERCEL === "1";
-    const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+    const blobToken = getBlobToken();
+    const hasBlobToken = Boolean(blobToken);
 
     // Vercel serverless request & response payloads have a strict 4.5MB limit.
     // In Base64, files expand by 33%, so 3.0MB produces ~4.0MB payload (safely within 4.5MB).
@@ -44,11 +47,12 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     // 1. If Vercel Blob is connected, upload to Blob storage
-    if (hasBlobToken) {
+    if (hasBlobToken && blobToken) {
       const cleanName = `uploads/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
       try {
         const blob = await put(cleanName, buffer, {
           access: "public",
+          token: blobToken,
           contentType: file.type || "application/octet-stream",
         });
         return NextResponse.json({
@@ -61,6 +65,7 @@ export async function POST(req: NextRequest) {
         try {
           const blob = await put(cleanName, buffer, {
             access: "private",
+            token: blobToken,
             contentType: file.type || "application/octet-stream",
           });
           const returnUrl = file.type?.startsWith("audio/")
