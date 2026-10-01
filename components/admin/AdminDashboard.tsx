@@ -106,6 +106,23 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     }
   };
 
+  // Cloud storage status state
+  const [cloudStatus, setCloudStatus] = useState<{
+    configured: boolean;
+    isVercel?: boolean;
+    storeBlobFound?: boolean;
+    totalBlobsInStore?: number;
+    error?: string;
+    message?: string;
+  } | null>(null);
+
+  const checkCloudStatus = React.useCallback(() => {
+    fetch("/api/wedding/blob-check", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((res) => setCloudStatus(res))
+      .catch(() => setCloudStatus(null));
+  }, []);
+
   // Hydrate from live server / Vercel Blob storage on mount so any device displays true live state
   React.useEffect(() => {
     fetch("/api/wedding", { cache: "no-store" })
@@ -119,7 +136,9 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         }
       })
       .catch((e) => console.warn("Admin mount sync error:", e));
-  }, []);
+
+    checkCloudStatus();
+  }, [checkCloudStatus]);
 
 
   // State for Add Event Form
@@ -880,7 +899,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       if (resData.success && resData.data) {
         setData(resData.data);
         persistLocalBackup(resData.data);
-        showToast("Live data successfully synced to Cloud & all devices!");
+        checkCloudStatus();
+        if (resData.blobSaved) {
+          showToast("Live data saved to Vercel Blob store & synced across all devices!");
+        } else if (resData.isConfigured === false) {
+          showToast("Saved locally. BLOB_READ_WRITE_TOKEN is missing in environment variables!");
+        } else {
+          showToast(`Saved locally, but Vercel Blob error: ${resData.blobError || "Unknown error"}`);
+        }
       } else {
         showToast(resData.error || "Failed to sync to cloud.");
       }
@@ -961,9 +987,45 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           </div>
 
           {saveStatus && (
-            <span className="ml-4 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs animate-fade-in">
+            <span className="ml-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs animate-fade-in">
               ✓ {saveStatus}
             </span>
+          )}
+
+          {cloudStatus && (
+            <div
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+                cloudStatus.configured
+                  ? cloudStatus.storeBlobFound
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-blue-50 text-blue-800 border-blue-200"
+                  : "bg-amber-50 text-amber-800 border-amber-200"
+              }`}
+              title={
+                cloudStatus.configured
+                  ? cloudStatus.storeBlobFound
+                    ? "Vercel Blob store connected and active (wedding-data/store.json exists)"
+                    : "Vercel Blob store connected. Click 'Sync All to Cloud' to upload initial data."
+                  : "Vercel Blob token missing in environment. Changes will save to local disk only."
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  cloudStatus.configured
+                    ? cloudStatus.storeBlobFound
+                      ? "bg-emerald-500 animate-pulse"
+                      : "bg-blue-500"
+                    : "bg-amber-500"
+                }`}
+              />
+              <span>
+                {cloudStatus.configured
+                  ? cloudStatus.storeBlobFound
+                    ? "Blob Active"
+                    : "Blob Connected (Empty)"
+                  : "Local Mode"}
+              </span>
+            </div>
           )}
         </div>
 

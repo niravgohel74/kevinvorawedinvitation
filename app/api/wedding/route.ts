@@ -37,8 +37,15 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json();
-    const restored = await restoreWeddingData(body);
-    return NextResponse.json({ success: true, data: restored });
+    const { data: restored, sync } = await restoreWeddingData(body);
+    return NextResponse.json({
+      success: true,
+      data: restored,
+      blobSaved: sync.blobSaved,
+      isConfigured: sync.isConfigured,
+      blobError: sync.blobError,
+      url: sync.url,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to restore wedding data" }, { status: 500 });
   }

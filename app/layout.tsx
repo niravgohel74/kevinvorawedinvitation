@@ -51,7 +51,7 @@ function getSiteUrl(): string {
 
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl();
-  const ogImageUrl = `${siteUrl}/og-image.jpg`;
+  const ogImageUrl = `${siteUrl}/og-image.jpg?v=3`;
 
   return {
     metadataBase: new URL(siteUrl),
@@ -101,7 +101,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const siteUrl = getSiteUrl();
-  const ogImageUrl = `${siteUrl}/og-image.jpg`;
+  const ogImageUrl = `${siteUrl}/og-image.jpg?v=3`;
 
   return (
     <html lang="en" className={`${cormorant.variable} ${playfair.variable} ${jakarta.variable}`}>

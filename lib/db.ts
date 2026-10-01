@@ -150,32 +150,52 @@ async function readBlobStore(): Promise<any | null> {
   return null;
 }
 
-async function writeBlobStore(data: WeddingData): Promise<boolean> {
+export interface BlobSyncResult {
+  blobSaved: boolean;
+  isConfigured: boolean;
+  blobError?: string;
+  url?: string;
+}
+
+export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) return false;
+  if (!token) {
+    console.warn("[Vercel Blob] BLOB_READ_WRITE_TOKEN is not defined in environment.");
+    return {
+      blobSaved: false,
+      isConfigured: false,
+      blobError: "BLOB_READ_WRITE_TOKEN is missing in environment variables",
+    };
+  }
 
   const jsonStr = JSON.stringify(data, null, 2);
 
-  // 1. Try private access first (matches Private store configuration)
+  // 1. Try private access first (matches Private store configuration like kevinstorage)
   try {
-    await put(BLOB_STORE_PATH, jsonStr, {
+    const blob = await put(BLOB_STORE_PATH, jsonStr, {
       access: "private",
       addRandomSuffix: false,
+      allowOverwrite: true,
       contentType: "application/json",
     });
-    return true;
-  } catch (privErr) {
-    // 2. Fall back to public access (if store is Public)
+    console.log("[Vercel Blob] Successfully saved to private store:", blob.url);
+    return { blobSaved: true, isConfigured: true, url: blob.url };
+  } catch (privErr: any) {
+    console.warn("[Vercel Blob] Private put failed, trying public access:", privErr?.message || privErr);
+    // 2. Fall back to public access (if store was created as Public)
     try {
-      await put(BLOB_STORE_PATH, jsonStr, {
+      const blob = await put(BLOB_STORE_PATH, jsonStr, {
         access: "public",
         addRandomSuffix: false,
+        allowOverwrite: true,
         contentType: "application/json",
       });
-      return true;
-    } catch (pubErr) {
-      console.error("Failed to write to Vercel Blob (both private and public failed):", pubErr);
-      return false;
+      console.log("[Vercel Blob] Successfully saved to public store:", blob.url);
+      return { blobSaved: true, isConfigured: true, url: blob.url };
+    } catch (pubErr: any) {
+      const errMsg = `Private write: ${privErr?.message || privErr} | Public write: ${pubErr?.message || pubErr}`;
+      console.error("[Vercel Blob] Both private and public writes failed:", errMsg);
+      return { blobSaved: false, isConfigured: true, blobError: errMsg };
     }
   }
 }
@@ -200,14 +220,15 @@ async function ensureStore(): Promise<WeddingData> {
       }
 
       // Store doesn't exist yet on Vercel Blob: seed it from repository disk data!
+      console.log("[Vercel Blob] Store empty on cloud, auto-seeding from repository default data...");
       const initialDisk = readLocalDisk();
       const mergedInitial = deepMergeWeddingData(initialDisk);
       await writeBlobStore(mergedInitial);
       memoryCache = mergedInitial;
       lastCacheTime = Date.now();
       return mergedInitial;
-    } catch (blobErr) {
-      console.warn("Vercel Blob read error, falling back to local disk:", blobErr);
+    } catch (blobErr: any) {
+      console.warn("Vercel Blob read error, falling back to local disk:", blobErr?.message || blobErr);
     }
   }
 
@@ -219,7 +240,12 @@ async function ensureStore(): Promise<WeddingData> {
   return merged;
 }
 
-async function saveStore(data: WeddingData): Promise<void> {
+export async function syncCurrentStoreToBlob(): Promise<BlobSyncResult> {
+  const current = await ensureStore();
+  return await writeBlobStore(current);
+}
+
+async function saveStore(data: WeddingData): Promise<BlobSyncResult> {
   const merged = deepMergeWeddingData(data);
   memoryCache = merged;
   lastCacheTime = Date.now();
@@ -228,8 +254,13 @@ async function saveStore(data: WeddingData): Promise<void> {
 
   const hasBlobToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN);
   if (hasBlobToken) {
-    await writeBlobStore(merged);
+    return await writeBlobStore(merged);
   }
+  return {
+    blobSaved: false,
+    isConfigured: false,
+    blobError: "BLOB_READ_WRITE_TOKEN is not defined in environment variables",
+  };
 }
 
 export async function getWeddingData(): Promise<WeddingData> {
@@ -535,7 +566,9 @@ export async function deleteMusicTrack(id: string): Promise<boolean> {
   return true;
 }
 
-export async function restoreWeddingData(fullData: WeddingData): Promise<WeddingData> {
+export async function restoreWeddingData(
+  fullData: WeddingData
+): Promise<{ data: WeddingData; sync: BlobSyncResult }> {
   const current = await ensureStore();
   const merged: WeddingData = deepMergeWeddingData({
     ...current,
@@ -560,6 +593,6 @@ export async function restoreWeddingData(fullData: WeddingData): Promise<Wedding
     shagun: fullData.shagun || current.shagun,
     musicLibrary: fullData.musicLibrary || current.musicLibrary,
   });
-  await saveStore(merged);
-  return merged;
+  const sync = await saveStore(merged);
+  return { data: merged, sync };
 }
