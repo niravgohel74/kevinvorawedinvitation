@@ -36,41 +36,77 @@ export function getStoreVersion(): number {
   return storeVersion;
 }
 
+export function normalizeMediaUrl(url: any): any {
+  if (typeof url !== "string" || !url) return url;
+  const trimmed = url.trim();
+  // If already proxied, leave as is
+  if (trimmed.startsWith("/api/media-proxy") || trimmed.startsWith("/api/audio-proxy")) {
+    return trimmed;
+  }
+  // If it's a private Vercel blob URL (or any vercel storage blob URL), route through media-proxy
+  if (
+    trimmed.includes("blob.vercel-storage.com") &&
+    !trimmed.includes("/api/media-proxy?url=") &&
+    !trimmed.includes("/api/audio-proxy?url=")
+  ) {
+    return `/api/media-proxy?url=${encodeURIComponent(trimmed)}`;
+  }
+  return trimmed;
+}
+
+export function sanitizeMediaUrls<T>(obj: T): T {
+  if (typeof obj === "string") {
+    return normalizeMediaUrl(obj) as unknown as T;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeMediaUrls(item)) as unknown as T;
+  }
+  if (obj && typeof obj === "object") {
+    const res: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      res[key] = sanitizeMediaUrls(value);
+    }
+    return res;
+  }
+  return obj;
+}
+
 function deepMergeWeddingData(parsed: any): WeddingData {
   if (!parsed || typeof parsed !== "object") {
     return initialWeddingData;
   }
+  const cleanParsed = sanitizeMediaUrls(parsed);
   return {
     ...initialWeddingData,
-    ...parsed,
+    ...cleanParsed,
     wedding: {
       ...initialWeddingData.wedding,
-      ...(parsed.wedding || {}),
+      ...(cleanParsed.wedding || {}),
     },
     couple: {
       ...initialWeddingData.couple,
-      ...(parsed.couple || {}),
+      ...(cleanParsed.couple || {}),
     },
     family: {
       ...initialWeddingData.family,
-      ...(parsed.family || {}),
+      ...(cleanParsed.family || {}),
     },
     sectionVisibility: {
       ...initialWeddingData.sectionVisibility,
-      ...(parsed.sectionVisibility || {}),
+      ...(cleanParsed.sectionVisibility || {}),
     },
     venue: {
       ...initialWeddingData.venue,
-      ...(parsed.venue || {}),
+      ...(cleanParsed.venue || {}),
     },
-    events: Array.isArray(parsed.events) ? parsed.events : initialWeddingData.events,
-    story: Array.isArray(parsed.story) ? parsed.story : initialWeddingData.story,
-    timeline: Array.isArray(parsed.timeline) ? parsed.timeline : initialWeddingData.timeline,
-    gallery: Array.isArray(parsed.gallery) ? parsed.gallery : initialWeddingData.gallery,
-    rsvps: Array.isArray(parsed.rsvps) ? parsed.rsvps : initialWeddingData.rsvps,
-    wishes: Array.isArray(parsed.wishes) ? parsed.wishes : initialWeddingData.wishes,
-    shagun: Array.isArray(parsed.shagun) ? parsed.shagun : initialWeddingData.shagun,
-    musicLibrary: Array.isArray(parsed.musicLibrary) ? parsed.musicLibrary : initialWeddingData.musicLibrary,
+    events: Array.isArray(cleanParsed.events) ? cleanParsed.events : initialWeddingData.events,
+    story: Array.isArray(cleanParsed.story) ? cleanParsed.story : initialWeddingData.story,
+    timeline: Array.isArray(cleanParsed.timeline) ? cleanParsed.timeline : initialWeddingData.timeline,
+    gallery: Array.isArray(cleanParsed.gallery) ? cleanParsed.gallery : initialWeddingData.gallery,
+    rsvps: Array.isArray(cleanParsed.rsvps) ? cleanParsed.rsvps : initialWeddingData.rsvps,
+    wishes: Array.isArray(cleanParsed.wishes) ? cleanParsed.wishes : initialWeddingData.wishes,
+    shagun: Array.isArray(cleanParsed.shagun) ? cleanParsed.shagun : initialWeddingData.shagun,
+    musicLibrary: Array.isArray(cleanParsed.musicLibrary) ? cleanParsed.musicLibrary : initialWeddingData.musicLibrary,
   };
 }
 

@@ -68,9 +68,7 @@ export async function POST(req: NextRequest) {
             token: blobToken,
             contentType: file.type || "application/octet-stream",
           });
-          const returnUrl = file.type?.startsWith("audio/")
-            ? `/api/audio-proxy?url=${encodeURIComponent(blob.url)}`
-            : blob.url;
+          const returnUrl = `/api/media-proxy?url=${encodeURIComponent(blob.url)}`;
           return NextResponse.json({
             success: true,
             url: returnUrl,
