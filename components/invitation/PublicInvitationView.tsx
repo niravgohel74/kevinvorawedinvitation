@@ -63,14 +63,10 @@ export function PublicInvitationView({
       }
     };
 
-    // Immediate hydration from local storage if available on this browser
+    // Sync fresh server-provided initialData into local storage to clear any stale cache
     try {
-      const stored = localStorage.getItem("wedding_live_data");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.wedding?.groomName) {
-          setData(parsed);
-        }
+      if (initialData?.wedding?.groomName) {
+        localStorage.setItem("wedding_live_data", JSON.stringify(initialData));
       }
       const v = localStorage.getItem("wedding_data_version");
       if (v) localVersionRef.current = Number(v);
