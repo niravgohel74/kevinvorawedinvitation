@@ -4,6 +4,7 @@ import Image from "next/image";
 import { motion } from "framer-motion";
 import { StoryItem, CoupleInfo } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { RichText } from "@/components/ui/RichText";
 
 interface StorySectionProps {
   story: StoryItem[];
@@ -33,7 +34,7 @@ export function StorySection({ story, couple }: StorySectionProps) {
           </div>
           {couple.quote && (
             <p className="max-w-xl mx-auto font-editorial-serif text-lg sm:text-xl italic text-[#736B63] pt-3">
-              &ldquo;{couple.quote}&rdquo;
+              &ldquo;<RichText content={couple.quote} />&rdquo;
             </p>
           )}
         </div>
@@ -94,7 +95,7 @@ export function StorySection({ story, couple }: StorySectionProps) {
                       {item.title}
                     </h3>
                     <p className="text-sm sm:text-base text-[#575048] leading-relaxed font-light">
-                      {item.description}
+                      <RichText content={item.description} />
                     </p>
                   </div>
                 </motion.div>

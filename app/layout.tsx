@@ -1,5 +1,6 @@
 import type { Viewport, Metadata } from "next";
 import { headers } from "next/headers";
+import { getWeddingData } from "@/lib/db";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -9,8 +10,8 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
-const SITE_TITLE = "Kevin & Moksha | Royal Wedding Celebration";
-const SITE_DESC = "Join us to celebrate the royal wedding of Kevin & Moksha on Friday, December 18, 2026 at The Leela Palace, Udaipur.";
+const DEFAULT_TITLE = "Kevin & Moksha | Royal Wedding Celebration";
+const DEFAULT_DESC = "Join us to celebrate the royal wedding of Kevin & Moksha on Friday, December 18, 2026 at The Leela Palace, Udaipur.";
 const PROD_URL = "https://kevin-moksha-wedding-invitation.vercel.app";
 
 function getSiteUrl(): string {
@@ -27,16 +28,47 @@ function getSiteUrl(): string {
   return PROD_URL;
 }
 
+function resolveOgImageUrl(siteUrl: string, customOg?: string): string {
+  if (!customOg || !customOg.trim()) {
+    return `${siteUrl}/og-image.jpg?v=4`;
+  }
+  const trimmed = customOg.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    if (trimmed.includes("blob.vercel-storage.com")) {
+      return `${siteUrl}/api/media-proxy?url=${encodeURIComponent(trimmed)}`;
+    }
+    return trimmed;
+  }
+  if (trimmed.startsWith("/")) {
+    return `${siteUrl}${trimmed}`;
+  }
+  return `${siteUrl}/${trimmed}`;
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   const siteUrl = getSiteUrl();
-  const ogImageUrl = `${siteUrl}/og-image.jpg?v=3`;
+  let weddingData = null;
+  try {
+    weddingData = await getWeddingData();
+  } catch {}
+
+  const groom = weddingData?.wedding?.groomName || "Kevin";
+  const bride = weddingData?.wedding?.brideName || "Moksha";
+  const venue = weddingData?.wedding?.location || "The Leela Palace";
+  const city = weddingData?.wedding?.city || "Udaipur";
+  const siteTitle = `${groom} & ${bride} | Royal Wedding Celebration`;
+  const siteDesc = weddingData?.wedding?.introText
+    ? weddingData.wedding.introText.replace(/<[^>]*>/g, "").slice(0, 160)
+    : `Join us to celebrate the royal wedding of ${groom} & ${bride} at ${venue}, ${city}.`;
+
+  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData?.wedding?.ogImage);
 
   return {
     metadataBase: new URL(siteUrl),
-    title: SITE_TITLE,
-    description: SITE_DESC,
-    keywords: ["Kevin and Moksha", "Wedding Invitation", "Udaipur Wedding", "The Leela Palace", "Kevin Vora"],
-    authors: [{ name: "Kevin & Moksha" }],
+    title: siteTitle,
+    description: siteDesc,
+    keywords: [`${groom} and ${bride}`, "Wedding Invitation", `${city} Wedding`, venue, `${groom} Vora`],
+    authors: [{ name: `${groom} & ${bride}` }],
     icons: {
       icon: [
         { url: "/favicon.ico", sizes: "32x32" },
@@ -47,17 +79,17 @@ export async function generateMetadata(): Promise<Metadata> {
       apple: "/icon.svg",
     },
     openGraph: {
-      title: SITE_TITLE,
-      description: SITE_DESC,
+      title: siteTitle,
+      description: siteDesc,
       url: siteUrl,
-      siteName: "Kevin & Moksha Wedding",
+      siteName: `${groom} & ${bride} Wedding`,
       images: [
         {
           url: ogImageUrl,
           secureUrl: ogImageUrl,
           width: 1200,
           height: 630,
-          alt: "Kevin & Moksha Royal Wedding Invitation",
+          alt: `${groom} & ${bride} Royal Wedding Invitation`,
           type: "image/jpeg",
         },
       ],
@@ -66,20 +98,32 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: SITE_TITLE,
-      description: SITE_DESC,
+      title: siteTitle,
+      description: siteDesc,
       images: [ogImageUrl],
     },
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const siteUrl = getSiteUrl();
-  const ogImageUrl = `${siteUrl}/og-image.jpg?v=3`;
+  let weddingData = null;
+  try {
+    weddingData = await getWeddingData();
+  } catch {}
+
+  const groom = weddingData?.wedding?.groomName || "Kevin";
+  const bride = weddingData?.wedding?.brideName || "Moksha";
+  const siteTitle = `${groom} & ${bride} | Royal Wedding Celebration`;
+  const siteDesc = weddingData?.wedding?.introText
+    ? weddingData.wedding.introText.replace(/<[^>]*>/g, "").slice(0, 160)
+    : DEFAULT_DESC;
+
+  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData?.wedding?.ogImage);
 
   return (
     <html lang="en" className="scroll-smooth">
@@ -87,23 +131,23 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Core meta and direct tags placed at top of head for fastest crawler detection */}
-        <title>{SITE_TITLE}</title>
-        <meta name="description" content={SITE_DESC} />
+        <title>{siteTitle}</title>
+        <meta name="description" content={siteDesc} />
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Kevin & Moksha Wedding" />
+        <meta property="og:site_name" content={`${groom} & ${bride} Wedding`} />
         <meta property="og:url" content={siteUrl} />
-        <meta property="og:title" content={SITE_TITLE} />
-        <meta property="og:description" content={SITE_DESC} />
+        <meta property="og:title" content={siteTitle} />
+        <meta property="og:description" content={siteDesc} />
         <meta property="og:image" content={ogImageUrl} />
         <meta property="og:image:secure_url" content={ogImageUrl} />
         <meta property="og:image:type" content="image/jpeg" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content="Kevin & Moksha Royal Wedding Invitation" />
+        <meta property="og:image:alt" content={`${groom} & ${bride} Royal Wedding Invitation`} />
         <link rel="image_src" href={ogImageUrl} />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={SITE_TITLE} />
-        <meta name="twitter:description" content={SITE_DESC} />
+        <meta name="twitter:title" content={siteTitle} />
+        <meta name="twitter:description" content={siteDesc} />
         <meta name="twitter:image" content={ogImageUrl} />
       </head>
       <body className="antialiased min-h-screen selection:bg-[#E9E1D5] selection:text-[#202020] bg-[#F8F5EF] text-[#202020]">

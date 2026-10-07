@@ -49,9 +49,13 @@ import {
   ShieldCheck,
   Edit,
   Scissors,
+  Type,
+  Palette,
 } from "lucide-react";
 import { PublicInvitationView } from "@/components/invitation/PublicInvitationView";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
+import { RichTextEditorField } from "@/components/admin/RichTextEditorField";
+import { TypographySettingsSection } from "@/components/admin/TypographySettingsSection";
 import { AudioTrimmerModal } from "@/components/admin/AudioTrimmerModal";
 import { safeFetchJson } from "@/lib/apiHelper";
 import { MAX_AUDIO_UPLOAD_BYTES, uploadAudioToStorage } from "@/lib/uploadAudio";
@@ -342,8 +346,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   };
 
   // --- SAVE OPERATIONS ---
-  const saveWeddingDetails = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const saveWeddingDetails = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e && typeof e.preventDefault === "function") e.preventDefault();
     setIsSaving(true);
     try {
       const res = await fetch("/api/wedding", {
@@ -1078,6 +1082,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     { id: "shagun", label: `Shagun Register (₹${totalShagunAmount.toLocaleString("en-IN")})`, icon: Coins },
     { id: "music", label: "Music Library", icon: Music2 },
     { id: "details", label: "Wedding Details", icon: Heart },
+    { id: "typography", label: "Typography & Theme", icon: Type },
     { id: "couple", label: "The Couple", icon: Users },
     { id: "story", label: "Our Story", icon: Clock },
     { id: "events", label: "Events", icon: Calendar },
@@ -2288,20 +2293,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                      Hero Romantic Couple Quote (Displayed Beneath Names)
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="e.g. In the quiet rhythm of our laughter and in every shared dream, we found our forever."
-                      value={data.wedding.heroQuote || ""}
-                      onChange={(e) =>
-                        setData({ ...data, wedding: { ...data.wedding, heroQuote: e.target.value } })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                    />
-                  </div>
+                  <RichTextEditorField
+                    label="Hero Romantic Couple Quote (Displayed Beneath Names)"
+                    value={data.wedding.heroQuote || ""}
+                    onChange={(val) =>
+                      setData({ ...data, wedding: { ...data.wedding, heroQuote: val } })
+                    }
+                    placeholder="e.g. In the quiet rhythm of our laughter and in every shared dream, we found our forever."
+                    helpText="Format text with bold, italic, custom color, font size, and fonts."
+                  />
 
                   <ImageUploadField
                     label="Hero Cinematic Cover Photo"
@@ -2312,33 +2312,34 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     helpText="Large landscape cover photo displayed at the very top of the invitation."
                   />
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                      Introduction Text
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={data.wedding.introText}
-                      onChange={(e) =>
-                        setData({ ...data, wedding: { ...data.wedding, introText: e.target.value } })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                    />
-                  </div>
+                  <ImageUploadField
+                    label="Social Share Preview (OG Image / WhatsApp Card)"
+                    value={data.wedding.ogImage || ""}
+                    onChange={(url) =>
+                      setData({ ...data, wedding: { ...data.wedding, ogImage: url } })
+                    }
+                    helpText="Image displayed when sharing the invitation link on WhatsApp, Facebook, iMessage, and Twitter (recommended size: 1200 x 630 px). Leaving empty uses the default royal invitation banner."
+                  />
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                      Closing Gratitude Message
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={data.wedding.closingMessage}
-                      onChange={(e) =>
-                        setData({ ...data, wedding: { ...data.wedding, closingMessage: e.target.value } })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                    />
-                  </div>
+                  <RichTextEditorField
+                    label="Introduction Text"
+                    value={data.wedding.introText || ""}
+                    onChange={(val) =>
+                      setData({ ...data, wedding: { ...data.wedding, introText: val } })
+                    }
+                    placeholder="e.g. With the divine blessings of Almighty..."
+                    helpText="Format text with bold, italic, custom color, font size, and fonts."
+                  />
+
+                  <RichTextEditorField
+                    label="Closing Gratitude Message"
+                    value={data.wedding.closingMessage || ""}
+                    onChange={(val) =>
+                      setData({ ...data, wedding: { ...data.wedding, closingMessage: val } })
+                    }
+                    placeholder="e.g. Thank you for being part of our story and blessing our new beginning."
+                    helpText="Format text with bold, italic, custom color, font size, and fonts."
+                  />
                 </div>
 
                 <button
@@ -2349,6 +2350,53 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   {isSaving ? "Saving..." : "SAVE CHANGES"}
                 </button>
               </form>
+            )}
+
+            {/* TAB: TYPOGRAPHY & THEME SETTINGS */}
+            {activeTab === "typography" && (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div>
+                  <h2 className="font-editorial-serif text-3xl text-[#202020]">Typography &amp; Color Theme</h2>
+                  <p className="text-xs text-[#736B63] mt-1">
+                    Customize primary heading fonts, size scales, and luxury color accents. Changes update live across the invitation.
+                  </p>
+                </div>
+
+                <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm">
+                  <TypographySettingsSection
+                    styling={data.wedding.textStyling || {
+                      headingFont: "editorial-serif",
+                      bodyFont: "sans",
+                      fontSizeScale: "normal",
+                      headingColor: "#202020",
+                      accentColor: "#9E814D",
+                      bodyColor: "#665E55",
+                      isBoldHeading: false,
+                      isItalicHeading: false,
+                    }}
+                    onChange={(updatedStyling) =>
+                      setData({
+                        ...data,
+                        wedding: {
+                          ...data.wedding,
+                          textStyling: updatedStyling,
+                        },
+                      })
+                    }
+                    groomName={data.wedding.groomName}
+                    brideName={data.wedding.brideName}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={saveWeddingDetails}
+                  disabled={isSaving}
+                  className="px-8 py-3 rounded-full bg-[#202020] text-[#FCFAF6] text-xs font-medium tracking-[0.2em] uppercase hover:bg-[#38332E] transition-colors shadow-md disabled:opacity-50"
+                >
+                  {isSaving ? "Saving..." : "SAVE STYLING CHANGES"}
+                </button>
+              </div>
             )}
 
             {/* TAB: COUPLE */}

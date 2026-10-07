@@ -4,6 +4,7 @@ import Image from "next/image";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { WeddingDetails } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { RichText } from "@/components/ui/RichText";
 
 interface HeroSectionProps {
   wedding: WeddingDetails;
@@ -94,15 +95,15 @@ export function HeroSection({ wedding }: HeroSectionProps) {
                 {/* Romantic Couple Quote / Line (Fully Editable from Admin) */}
         <div className="pt-2 sm:pt-4 max-w-xl mx-auto space-y-3">
           <p className="font-editorial-serif text-xl sm:text-2xl md:text-3xl italic tracking-wider text-[#E8DEC8]">
-            {wedding.invitationSubtitle || "Two Stories, One Chapter"}
+            <RichText content={wedding.invitationSubtitle || "Two Stories, One Chapter"} />
           </p>
           <p className="font-serif italic text-sm sm:text-base text-[#D8CFBE]/90 tracking-wide leading-relaxed font-light px-4">
-            &ldquo;{wedding.heroQuote || "In the quiet rhythm of our laughter and in every shared dream, we found our forever."}&rdquo;
+            &ldquo;<RichText content={wedding.heroQuote || "In the quiet rhythm of our laughter and in every shared dream, we found our forever."} />&rdquo;
           </p>
           <div className="flex items-center justify-center gap-3 pt-1">
             <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
             <span className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase text-[#C9B38C] font-medium">
-              {wedding.heroTagline || "Two Souls • One Heartbeat"}
+              <RichText content={wedding.heroTagline || "Two Souls • One Heartbeat"} />
             </span>
             <span className="h-[1px] w-8 bg-[#C9B38C]/40" />
           </div>

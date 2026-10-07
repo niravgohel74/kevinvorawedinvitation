@@ -3,6 +3,7 @@ import React from "react";
 import Link from "next/link";
 import { WeddingDetails } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { RichText } from "@/components/ui/RichText";
 import { Lock } from "lucide-react";
 
 interface ClosingSectionProps {
@@ -56,7 +57,7 @@ export function ClosingSection({ wedding }: ClosingSectionProps) {
         </div>
 
         <p className="text-sm sm:text-base text-[#BFB5A3] font-light italic max-w-md mx-auto pt-4">
-          &ldquo;{wedding.closingMessage || "Thank you for being part of our story and blessing our new beginning."}&rdquo;
+          &ldquo;<RichText content={wedding.closingMessage || "Thank you for being part of our story and blessing our new beginning."} />&rdquo;
         </p>
 
         {/* Discreet Host Access Link */}

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Great+Vibes&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,6 +7,8 @@
 :root {
   --font-cormorant: 'Cormorant Garamond', Georgia, serif;
   --font-playfair: 'Playfair Display', 'Cormorant Garamond', serif;
+  --font-cinzel: 'Cinzel', Georgia, serif;
+  --font-great-vibes: 'Great Vibes', cursive;
   --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
   --bg-ivory: #F8F5EF;
   --bg-warm-white: #FFFCF7;
@@ -15,6 +17,13 @@
   --color-champagne: #C9B38C;
   --color-soft-beige: #E9E1D5;
   --color-gold-deep: #9E814D;
+
+  /* Dynamic Custom Text Styling Variables (can be overridden by root or page wrapper) */
+  --wedding-heading-font: var(--font-cormorant);
+  --wedding-heading-color: #202020;
+  --wedding-accent-color: #9E814D;
+  --wedding-body-color: #665E55;
+  --wedding-heading-style: normal;
 }
 
 * {
@@ -88,7 +97,8 @@ body {
 
 /* Subtle botanical flourish styling */
 .font-editorial-serif {
-  font-family: var(--font-cormorant), Georgia, serif;
+  font-family: var(--wedding-heading-font), var(--font-cormorant), Georgia, serif;
+  font-style: var(--wedding-heading-style, normal);
 }
 
 .font-display-serif {

@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
           success: true,
           url: blob.url,
           fileName: file.name,
+          size: file.size,
         });
       } catch (pubErr) {
         // Fall back to private upload if store is configured as Private (e.g. kevinstorage)
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
             success: true,
             url: returnUrl,
             fileName: file.name,
+            size: file.size,
           });
         } catch (privErr) {
           console.error("Vercel Blob upload failed:", privErr);
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
         success: true,
         url: dataUri,
         fileName: file.name,
+        size: file.size,
       });
     }
 
@@ -108,6 +111,7 @@ export async function POST(req: NextRequest) {
       success: true,
       url: publicUrl,
       fileName: file.name,
+      size: file.size,
     });
   } catch (err: any) {
     return NextResponse.json(

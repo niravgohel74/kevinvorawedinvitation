@@ -16,6 +16,17 @@ export const initialWeddingData: WeddingData = {
     introText: "With grateful hearts and the blessings of our elders, we invite you to join us on our most cherished journey.",
     closingMessage: "Your love and presence have enriched our lives. We cannot wait to celebrate this milestone together.",
     ambientMusicUrl: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=acoustic-guitar-love-melody-110855.mp3",
+    ogImage: "",
+    textStyling: {
+      headingFont: "editorial-serif",
+      bodyFont: "sans",
+      fontSizeScale: "normal",
+      headingColor: "#202020",
+      accentColor: "#9E814D",
+      bodyColor: "#665E55",
+      isBoldHeading: false,
+      isItalicHeading: false,
+    },
     updatedAt: new Date().toISOString(),
   },
   couple: {

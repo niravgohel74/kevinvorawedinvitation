@@ -82,6 +82,10 @@ function deepMergeWeddingData(parsed: any): WeddingData {
     wedding: {
       ...initialWeddingData.wedding,
       ...(cleanParsed.wedding || {}),
+      textStyling: {
+        ...(initialWeddingData.wedding.textStyling as any),
+        ...(cleanParsed.wedding?.textStyling || {}),
+      },
     },
     couple: {
       ...initialWeddingData.couple,

@@ -167,8 +167,32 @@ export function PublicInvitationView({
     wishes: true,
   };
 
+  const textStyling = data.wedding.textStyling;
+  const headingFontFamily =
+    textStyling?.headingFont === "playfair"
+      ? "'Playfair Display', Georgia, serif"
+      : textStyling?.headingFont === "cinzel"
+      ? "'Cinzel', Georgia, serif"
+      : textStyling?.headingFont === "great-vibes"
+      ? "'Great Vibes', cursive"
+      : textStyling?.headingFont === "inter"
+      ? "'Plus Jakarta Sans', system-ui, sans-serif"
+      : "'Cormorant Garamond', Georgia, serif";
+
+  const dynamicStyles = {
+    "--wedding-heading-font": headingFontFamily,
+    "--wedding-heading-color": textStyling?.headingColor || "#202020",
+    "--wedding-accent-color": textStyling?.accentColor || "#9E814D",
+    "--wedding-body-color": textStyling?.bodyColor || "#665E55",
+    "--wedding-heading-style": textStyling?.isItalicHeading ? "italic" : "normal",
+    "--wedding-heading-weight": textStyling?.isBoldHeading ? "700" : "normal",
+  } as React.CSSProperties;
+
   return (
-    <main className="relative min-h-screen bg-[#F8F5EF] text-[#202020] selection:bg-[#E9E1D5] selection:text-[#202020]">
+    <main
+      style={dynamicStyles}
+      className="relative min-h-screen bg-[#F8F5EF] text-[#202020] selection:bg-[#E9E1D5] selection:text-[#202020]"
+    >
       {/* Background Flower Petals Showering Animation */}
       <PetalShower density={38} />
 

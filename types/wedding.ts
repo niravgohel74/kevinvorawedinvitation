@@ -13,6 +13,17 @@ export interface SectionVisibility {
   wishes: boolean;
 }
 
+export interface TextStyling {
+  headingFont: string; // "cormorant" | "playfair" | "cinzel" | "great-vibes" | "montserrat" | "inter"
+  bodyFont: string;
+  fontSizeScale: "normal" | "large" | "extra-large";
+  headingColor: string; // Hex color code e.g. "#202020"
+  accentColor: string; // Hex color code e.g. "#9E814D"
+  bodyColor: string; // Hex color code e.g. "#665E55"
+  isBoldHeading: boolean;
+  isItalicHeading: boolean;
+}
+
 export interface WeddingDetails {
   groomName: string; // Groom first everywhere
   brideName: string;
@@ -22,12 +33,14 @@ export interface WeddingDetails {
   city: string;
   hashtag: string;
   heroImage: string;
+  ogImage?: string; // Social share / Open Graph WhatsApp image
   invitationSubtitle: string;
   heroQuote?: string;
   heroTagline?: string;
   introText: string;
   closingMessage: string;
   ambientMusicUrl?: string;
+  textStyling?: TextStyling;
   updatedAt: string;
 }
 
