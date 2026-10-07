@@ -45,10 +45,10 @@ export async function generateMetadata(): Promise<Metadata> {
     weddingData = await getWeddingData();
   } catch {}
 
-  const groom = weddingData?.wedding?.groomName || "Kevin";
-  const bride = weddingData?.wedding?.brideName || "Moksha";
-  const venue = weddingData?.wedding?.location || "The Leela Palace";
-  const city = weddingData?.wedding?.city || "Udaipur";
+  const groom = (weddingData?.wedding?.groomName || "Kevin").replace(/<[^>]*>/g, "").trim();
+  const bride = (weddingData?.wedding?.brideName || "Moksha").replace(/<[^>]*>/g, "").trim();
+  const venue = (weddingData?.wedding?.location || "The Leela Palace").replace(/<[^>]*>/g, "").trim();
+  const city = (weddingData?.wedding?.city || "Udaipur").replace(/<[^>]*>/g, "").trim();
   const siteTitle = `${groom} & ${bride} | Royal Wedding Celebration`;
   const siteDesc = weddingData?.wedding?.introText
     ? weddingData.wedding.introText.replace(/<[^>]*>/g, "").slice(0, 160)

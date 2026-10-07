@@ -99,6 +99,7 @@ body {
 .font-editorial-serif {
   font-family: var(--wedding-heading-font), var(--font-cormorant), Georgia, serif;
   font-style: var(--wedding-heading-style, normal);
+  font-weight: var(--wedding-heading-weight, normal);
 }
 
 .font-display-serif {

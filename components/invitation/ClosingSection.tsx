@@ -49,7 +49,7 @@ export function ClosingSection({ wedding }: ClosingSectionProps) {
 
         <div className="space-y-1">
           <h3 className="font-editorial-serif text-4xl sm:text-5xl text-[#E8DEC8]">
-            {wedding.groomName} &amp; {wedding.brideName}
+            <RichText content={wedding.groomName} /> &amp; <RichText content={wedding.brideName} />
           </h3>
           <p className="text-xs sm:text-sm tracking-[0.25em] text-[#9E814D] uppercase font-light pt-1">
             {formattedDate} • {wedding.city}
@@ -63,7 +63,7 @@ export function ClosingSection({ wedding }: ClosingSectionProps) {
         {/* Discreet Host Access Link */}
         <div className="pt-16 sm:pt-20 border-t border-[#C9B38C]/15 flex items-center justify-between text-xs text-[#736B63]">
           <p className="text-[11px] tracking-wider text-[#A8A096]">
-            Crafted with love for {wedding.groomName} &amp; {wedding.brideName}
+            Crafted with love for <RichText content={wedding.groomName} /> &amp; <RichText content={wedding.brideName} />
           </p>
           <Link
             href="/login"

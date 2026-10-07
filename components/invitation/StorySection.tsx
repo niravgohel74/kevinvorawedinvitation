@@ -92,7 +92,7 @@ export function StorySection({ story, couple }: StorySectionProps) {
                       {item.year}
                     </span>
                     <h3 className="font-editorial-serif text-2xl sm:text-3xl font-normal text-[#202020] mb-3">
-                      {item.title}
+                      <RichText content={item.title} />
                     </h3>
                     <p className="text-sm sm:text-base text-[#575048] leading-relaxed font-light">
                       <RichText content={item.description} />
@@ -122,20 +122,20 @@ export function StorySection({ story, couple }: StorySectionProps) {
                 <div className="relative w-36 h-36 rounded-full overflow-hidden border-2 border-[#C9B38C] mb-5 shadow-md">
                   <Image
                     src={couple.groomPhoto}
-                    alt={couple.groomName}
+                    alt={couple.groomName.replace(/<[^>]*>/g, "")}
                     fill
                     sizes="150px"
                     className="object-cover"
                   />
                 </div>
-                <h4 className="font-editorial-serif text-2xl text-[#202020]">{couple.groomName}</h4>
+                <h4 className="font-editorial-serif text-2xl text-[#202020]"><RichText content={couple.groomName} /></h4>
                 {couple.groomTitle && (
                   <p className="text-xs text-[#9E814D] tracking-wider uppercase font-medium mt-1 mb-3">
-                    {couple.groomTitle}
+                    <RichText content={couple.groomTitle} />
                   </p>
                 )}
                 <p className="text-xs sm:text-sm text-[#665E55] font-light leading-relaxed">
-                  {couple.groomBio}
+                  <RichText content={couple.groomBio} />
                 </p>
               </div>
 
@@ -144,20 +144,20 @@ export function StorySection({ story, couple }: StorySectionProps) {
                 <div className="relative w-36 h-36 rounded-full overflow-hidden border-2 border-[#C9B38C] mb-5 shadow-md">
                   <Image
                     src={couple.bridePhoto}
-                    alt={couple.brideName}
+                    alt={couple.brideName.replace(/<[^>]*>/g, "")}
                     fill
                     sizes="150px"
                     className="object-cover"
                   />
                 </div>
-                <h4 className="font-editorial-serif text-2xl text-[#202020]">{couple.brideName}</h4>
+                <h4 className="font-editorial-serif text-2xl text-[#202020]"><RichText content={couple.brideName} /></h4>
                 {couple.brideTitle && (
                   <p className="text-xs text-[#9E814D] tracking-wider uppercase font-medium mt-1 mb-3">
-                    {couple.brideTitle}
+                    <RichText content={couple.brideTitle} />
                   </p>
                 )}
                 <p className="text-xs sm:text-sm text-[#665E55] font-light leading-relaxed">
-                  {couple.brideBio}
+                  <RichText content={couple.brideBio} />
                 </p>
               </div>
             </div>

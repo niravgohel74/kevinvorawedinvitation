@@ -1344,11 +1344,11 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="w-8 h-8 rounded-full bg-[#202020] text-[#C9B38C] flex items-center justify-center font-editorial-serif font-bold text-sm">
-              {data.wedding.groomName[0]}&amp;{data.wedding.brideName[0]}
+              {(data.wedding.groomName.replace(/<[^>]*>/g, "").trim()[0] || "K")}&amp;{(data.wedding.brideName.replace(/<[^>]*>/g, "").trim()[0] || "M")}
             </span>
             <div>
               <h1 className="text-sm font-semibold tracking-wide text-[#202020]">
-                {data.wedding.groomName} &amp; {data.wedding.brideName}
+                <RichText content={data.wedding.groomName} /> &amp; <RichText content={data.wedding.brideName} />
               </h1>
               <p className="text-[10px] text-[#8C847B] uppercase tracking-wider">
                 Wedding CMS &amp; Gift Register
@@ -1602,7 +1602,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-editorial-serif text-2xl text-[#202020]">
-                        {data.wedding.groomName} &amp; {data.wedding.brideName}
+                        <RichText content={data.wedding.groomName} /> &amp; <RichText content={data.wedding.brideName} />
                       </h3>
                       <p className="text-xs text-[#736B63]">
                         {data.wedding.weddingDate} • {data.wedding.location}
@@ -1809,7 +1809,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                               : "bg-[#F8F5EF] text-[#5A524A] border-[#E9E1D5]"
                           }`}
                         >
-                          Groom Side ({data.wedding.groomName}&apos;s Family)
+                          Groom Side ({data.wedding.groomName.replace(/<[^>]*>/g, "").trim()}&apos;s Family)
                         </button>
                         <button
                           type="button"
@@ -1820,7 +1820,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                               : "bg-[#F8F5EF] text-[#5A524A] border-[#E9E1D5]"
                           }`}
                         >
-                          Bride Side ({data.wedding.brideName}&apos;s Family)
+                          Bride Side ({data.wedding.brideName.replace(/<[^>]*>/g, "").trim()}&apos;s Family)
                         </button>
                       </div>
                     </div>

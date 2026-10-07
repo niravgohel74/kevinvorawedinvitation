@@ -121,12 +121,15 @@ export function DateRevealSection({ wedding, className = "" }: DateRevealSection
   const googleCalendarUrl = useMemo(() => {
     const start = dateDetails.date;
     const end = new Date(start.getTime() + 5 * 60 * 60 * 1000);
-    const venue = [wedding.location, wedding.city].filter(Boolean).join(", ");
+    const gClean = (wedding.groomName || "").replace(/<[^>]*>/g, "").trim();
+    const bClean = (wedding.brideName || "").replace(/<[^>]*>/g, "").trim();
+    const rawVenue = [wedding.location, wedding.city].filter(Boolean).join(", ");
+    const venue = rawVenue.replace(/<[^>]*>/g, "").trim();
     const params = new URLSearchParams({
       action: "TEMPLATE",
-      text: `${wedding.groomName} & ${wedding.brideName} — Wedding Celebration`,
+      text: `${gClean} & ${bClean} — Wedding Celebration`,
       dates: `${formatCalendarStamp(start)}/${formatCalendarStamp(end)}`,
-      details: `Join us as we celebrate the wedding of ${wedding.groomName} and ${wedding.brideName}.`,
+      details: `Join us as we celebrate the wedding of ${gClean} and ${bClean}.`,
       location: venue,
       ctz: "Asia/Kolkata",
     });
