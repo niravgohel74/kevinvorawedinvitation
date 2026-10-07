@@ -114,6 +114,8 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   );
   const isSavingRef = useRef<boolean>(isSaving);
   isSavingRef.current = isSaving;
+  const lastSaveTimeRef = useRef<number>(0);
+  const SAVE_COOLDOWN_MS = 12000; // 12 seconds grace period after save to prevent poller overwriting user edits
 
   // Helper to broadcast live updates in real-time (0ms) across all tabs, split views, and devices
   const broadcastLiveData = (updated: WeddingData) => {
@@ -122,6 +124,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       ? new Date(updated.wedding.updatedAt).getTime()
       : Date.now();
     currentVersionRef.current = ver;
+    lastSaveTimeRef.current = Date.now();
 
     try {
       localStorage.setItem("wedding_live_data", JSON.stringify(updated));
@@ -182,13 +185,17 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       .then((r) => r.json())
       .then((res) => {
         if (isMounted && res.success && res.data) {
-          setData(res.data);
-          const ver = Number(res.version) || Date.now();
-          currentVersionRef.current = ver;
-          try {
-            localStorage.setItem("wedding_live_data", JSON.stringify(res.data));
-            localStorage.setItem("wedding_data_version", ver.toString());
-          } catch {}
+          const serverTime = res.data?.wedding?.updatedAt
+            ? new Date(res.data.wedding.updatedAt).getTime()
+            : 0;
+          if (serverTime >= currentVersionRef.current) {
+            setData(res.data);
+            currentVersionRef.current = serverTime || Number(res.version) || Date.now();
+            try {
+              localStorage.setItem("wedding_live_data", JSON.stringify(res.data));
+              localStorage.setItem("wedding_data_version", currentVersionRef.current.toString());
+            } catch {}
+          }
         }
       })
       .catch((e) => console.warn("Admin mount sync error:", e));
@@ -231,21 +238,24 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     // D. Auto-sync when tab gains focus or mobile screen unlocks
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
+        if (Date.now() - lastSaveTimeRef.current < SAVE_COOLDOWN_MS) return;
         const activeTag = document.activeElement?.tagName?.toLowerCase();
-        if (activeTag === "input" || activeTag === "textarea") return;
+        if (activeTag === "input" || activeTag === "textarea" || activeTag === "select") return;
 
         try {
           const res = await fetch("/api/wedding", { cache: "no-store" });
           if (res.ok) {
             const json = await res.json();
             if (isMounted && json.success && json.data) {
-              const serverVer = Number(json.version) || 0;
-              if (serverVer > currentVersionRef.current) {
-                currentVersionRef.current = serverVer;
+              const serverTime = json.data?.wedding?.updatedAt
+                ? new Date(json.data.wedding.updatedAt).getTime()
+                : 0;
+              if (serverTime > currentVersionRef.current) {
+                currentVersionRef.current = serverTime;
                 setData(json.data);
                 try {
                   localStorage.setItem("wedding_live_data", JSON.stringify(json.data));
-                  localStorage.setItem("wedding_data_version", serverVer.toString());
+                  localStorage.setItem("wedding_data_version", serverTime.toString());
                 } catch {}
                 showToast("🔄 Synced latest updates from cloud!");
               }
@@ -257,12 +267,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleVisibilityChange);
 
-    // E. 3-Second Heartbeat Poller for Cross-Device Sync (e.g. edits on phone -> appear on laptop)
+    // E. 6-Second Heartbeat Poller for Cross-Device Sync (with strict anti-reversion protection)
     const interval = setInterval(async () => {
       if (document.visibilityState !== "visible") return;
       if (isSavingRef.current) return;
+      // Never overwrite during post-save grace period
+      if (Date.now() - lastSaveTimeRef.current < SAVE_COOLDOWN_MS) return;
+
       const activeTag = document.activeElement?.tagName?.toLowerCase();
-      if (activeTag === "input" || activeTag === "textarea") return;
+      if (activeTag === "input" || activeTag === "textarea" || activeTag === "select") return;
 
       try {
         const vRes = await fetch("/api/wedding/version", { cache: "no-store" });
@@ -273,19 +286,26 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
             if (dRes.ok) {
               const dJson = await dRes.json();
               if (isMounted && dJson.success && dJson.data) {
-                currentVersionRef.current = Number(dJson.version) || version;
+                const serverTime = dJson.data?.wedding?.updatedAt
+                  ? new Date(dJson.data.wedding.updatedAt).getTime()
+                  : 0;
+                // STRICT ANTI-REVERSION: Never overwrite if server updatedAt is not strictly newer!
+                if (serverTime <= currentVersionRef.current) {
+                  return;
+                }
+                currentVersionRef.current = serverTime;
                 setData(dJson.data);
                 try {
                   localStorage.setItem("wedding_live_data", JSON.stringify(dJson.data));
                   localStorage.setItem("wedding_data_version", currentVersionRef.current.toString());
                 } catch {}
-                showToast("🔄 Synced latest updates from other device!");
+                showToast("🔄 Synced latest updates from cloud!");
               }
             }
           }
         }
       } catch {}
-    }, 3000);
+    }, 6000);
 
     return () => {
       isMounted = false;
@@ -509,6 +529,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const saveWeddingDetails = async (e?: React.FormEvent | React.MouseEvent) => {
     if (e && typeof e.preventDefault === "function") e.preventDefault();
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     try {
       const res = await fetch("/api/wedding", {
         method: "PATCH",
@@ -517,7 +538,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
-        const nextData = { ...data, wedding: { ...data.wedding, ...resData.data } };
+        const nextWedding = { ...data.wedding, ...resData.data };
+        const nextData = { ...data, wedding: nextWedding };
+        const newVer = nextWedding.updatedAt
+          ? new Date(nextWedding.updatedAt).getTime()
+          : Date.now();
+        currentVersionRef.current = newVer;
+        lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
         showToast("Wedding details successfully updated!");
       } else {
@@ -533,6 +560,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const saveCoupleInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     try {
       const res = await fetch("/api/couple", {
         method: "PATCH",
@@ -541,11 +569,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        const nowIso = new Date().toISOString();
         const nextData = {
           ...data,
           couple: { ...data.couple, ...resData.data },
-          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+          wedding: { ...data.wedding, updatedAt: nowIso },
         };
+        currentVersionRef.current = new Date(nowIso).getTime();
+        lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
         showToast("Couple profile updated successfully!");
       } else {
@@ -561,6 +592,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const saveVenueInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     try {
       const res = await fetch("/api/venue", {
         method: "PATCH",
@@ -569,11 +601,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        const nowIso = new Date().toISOString();
         const nextData = {
           ...data,
           venue: { ...data.venue, ...resData.data },
-          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+          wedding: { ...data.wedding, updatedAt: nowIso },
         };
+        currentVersionRef.current = new Date(nowIso).getTime();
+        lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
         showToast("Venue information saved!");
       } else {
@@ -589,6 +624,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const saveFamilyInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     try {
       const res = await fetch("/api/family", {
         method: "PATCH",
@@ -597,11 +633,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (resData.success) {
+        const nowIso = new Date().toISOString();
         const nextData = {
           ...data,
           family: { ...data.family, ...resData.data },
-          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+          wedding: { ...data.wedding, updatedAt: nowIso },
         };
+        currentVersionRef.current = new Date(nowIso).getTime();
+        lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
         showToast("Family blessings saved!");
       } else {
@@ -616,6 +655,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   const saveSectionVisibility = async () => {
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     try {
       const res = await fetch("/api/sections", {
         method: "PATCH",
@@ -624,11 +664,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       });
       const resData = await res.json();
       if (res.ok) {
+        const nowIso = new Date().toISOString();
         const nextData = {
           ...data,
           sectionVisibility: resData.data || data.sectionVisibility,
-          wedding: { ...data.wedding, updatedAt: new Date().toISOString() },
+          wedding: { ...data.wedding, updatedAt: nowIso },
         };
+        currentVersionRef.current = new Date(nowIso).getTime();
+        lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
         showToast("Section visibility preferences saved!");
       } else {
@@ -749,12 +792,17 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   const handleSaveAllStory = async () => {
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     await fetch("/api/story", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data.story),
     });
-    persistLocalBackup(data);
+    const nowIso = new Date().toISOString();
+    const nextData = { ...data, wedding: { ...data.wedding, updatedAt: nowIso } };
+    currentVersionRef.current = new Date(nowIso).getTime();
+    lastSaveTimeRef.current = Date.now();
+    persistLocalBackup(nextData);
     setIsSaving(false);
     showToast("Story changes saved!");
   };
@@ -793,12 +841,17 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
   const handleSaveAllTimeline = async () => {
     setIsSaving(true);
+    lastSaveTimeRef.current = Date.now();
     await fetch("/api/timeline", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data.timeline),
     });
-    persistLocalBackup(data);
+    const nowIso = new Date().toISOString();
+    const nextData = { ...data, wedding: { ...data.wedding, updatedAt: nowIso } };
+    currentVersionRef.current = new Date(nowIso).getTime();
+    lastSaveTimeRef.current = Date.now();
+    persistLocalBackup(nextData);
     setIsSaving(false);
     showToast("Timeline schedule saved!");
   };

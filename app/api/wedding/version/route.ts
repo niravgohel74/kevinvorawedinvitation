@@ -6,9 +6,9 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 export async function GET() {
-  const data = await getWeddingData(true);
+  const data = await getWeddingData(false);
   const timestamp = data.wedding?.updatedAt ? new Date(data.wedding.updatedAt).getTime() : 0;
-  const version = Math.max(timestamp, getStoreVersion());
+  const version = timestamp || getStoreVersion();
   return NextResponse.json(
     { version, updatedAt: data.wedding?.updatedAt },
     {

@@ -49,14 +49,19 @@ export function PublicInvitationView({
         if (!res.ok) return;
         const json = await res.json();
         if (isMounted && json.success && json.data) {
-          setData(json.data);
-          if (json.version) {
-            localVersionRef.current = Number(json.version);
-            try {
-              localStorage.setItem("wedding_live_data", JSON.stringify(json.data));
-              localStorage.setItem("wedding_data_version", json.version.toString());
-            } catch {}
+          const serverTime = json.data?.wedding?.updatedAt
+            ? new Date(json.data.wedding.updatedAt).getTime()
+            : 0;
+          if (localVersionRef.current > 0 && serverTime < localVersionRef.current) {
+            return;
           }
+          setData(json.data);
+          const ver = serverTime || Number(json.version) || Date.now();
+          localVersionRef.current = ver;
+          try {
+            localStorage.setItem("wedding_live_data", JSON.stringify(json.data));
+            localStorage.setItem("wedding_data_version", ver.toString());
+          } catch {}
         }
       } catch (e) {
         // silent background failure
@@ -139,7 +144,7 @@ export function PublicInvitationView({
           }
         }
       } catch {}
-    }, 3500);
+    }, 8000);
 
     return () => {
       isMounted = false;

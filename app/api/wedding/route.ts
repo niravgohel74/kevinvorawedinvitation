@@ -8,9 +8,9 @@ export const fetchCache = "force-no-store";
 
 export async function GET() {
   try {
-    const data = await getWeddingData(true);
+    const data = await getWeddingData(false);
     const timestamp = data.wedding?.updatedAt ? new Date(data.wedding.updatedAt).getTime() : 0;
-    const version = Math.max(timestamp, getStoreVersion());
+    const version = timestamp || getStoreVersion();
     return NextResponse.json(
       { success: true, data, version },
       {
@@ -35,7 +35,8 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json();
     const updated = await updateWeddingDetails(body);
-    return NextResponse.json({ success: true, data: updated });
+    const timestamp = updated.updatedAt ? new Date(updated.updatedAt).getTime() : Date.now();
+    return NextResponse.json({ success: true, data: updated, version: timestamp });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to update wedding details" }, { status: 500 });
   }

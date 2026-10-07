@@ -30,9 +30,12 @@ const BLOB_STORE_PATH = "wedding-data/store.json";
 let memoryCache: WeddingData | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 1500; // 1.5 seconds TTL
-let storeVersion = Date.now();
+let storeVersion = 0;
 
 export function getStoreVersion(): number {
+  if (memoryCache?.wedding?.updatedAt) {
+    return new Date(memoryCache.wedding.updatedAt).getTime();
+  }
   return storeVersion;
 }
 
@@ -354,24 +357,34 @@ async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
     try {
       const remoteData = await readBlobStore();
       if (remoteData) {
-        const merged = deepMergeWeddingData(remoteData);
-        memoryCache = merged;
-        lastCacheTime = Date.now();
-        writeLocalBackup(merged);
-        return merged;
-      }
+        const remoteTime = remoteData.wedding?.updatedAt
+          ? new Date(remoteData.wedding.updatedAt).getTime()
+          : 0;
+        const localCacheTime = memoryCache?.wedding?.updatedAt
+          ? new Date(memoryCache.wedding.updatedAt).getTime()
+          : 0;
 
-      // Store doesn't exist yet on Vercel Blob: seed it from repository disk data!
-      console.log("[Vercel Blob] Store empty on cloud, auto-seeding from repository default data...");
-      const initialDisk = readLocalDisk();
-      const mergedInitial = deepMergeWeddingData(initialDisk);
-      await writeBlobStore(mergedInitial);
-      memoryCache = mergedInitial;
-      lastCacheTime = Date.now();
-      return mergedInitial;
+        // If local memory cache has a newer modification, do not downgrade to stale remote data
+        if (!memoryCache || remoteTime >= localCacheTime) {
+          const merged = deepMergeWeddingData(remoteData);
+          memoryCache = merged;
+          lastCacheTime = Date.now();
+          storeVersion = remoteTime || Date.now();
+          writeLocalBackup(merged);
+          return merged;
+        } else {
+          return memoryCache;
+        }
+      }
     } catch (blobErr: any) {
-      console.warn("Vercel Blob read error, falling back to local disk:", blobErr?.message || blobErr);
+      console.warn("Vercel Blob read error:", blobErr?.message || blobErr);
     }
+  }
+
+  // If memoryCache exists and remote reading failed or returned null (e.g. store suspended):
+  // Preserve memoryCache so active edits in current instance are never lost!
+  if (memoryCache) {
+    return memoryCache;
   }
 
   // 2. Fallback to local filesystem
@@ -379,6 +392,9 @@ async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
   const merged = deepMergeWeddingData(local);
   memoryCache = merged;
   lastCacheTime = Date.now();
+  storeVersion = merged.wedding?.updatedAt
+    ? new Date(merged.wedding.updatedAt).getTime()
+    : Date.now();
   return merged;
 }
 
@@ -388,16 +404,20 @@ export async function syncCurrentStoreToBlob(): Promise<BlobSyncResult> {
 }
 
 async function saveStore(data: WeddingData): Promise<BlobSyncResult> {
+  const nowIso = new Date().toISOString();
+  const nowMs = new Date(nowIso).getTime();
+
   const merged = deepMergeWeddingData({
     ...data,
     wedding: {
       ...data.wedding,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
     },
   });
+
   memoryCache = merged;
   lastCacheTime = Date.now();
-  storeVersion = Date.now();
+  storeVersion = nowMs;
 
   writeLocalBackup(merged);
 
@@ -422,18 +442,19 @@ export async function getWeddingData(forceFresh: boolean = false): Promise<Weddi
 }
 
 export async function updateWeddingDetails(updates: Partial<WeddingDetails>): Promise<WeddingDetails> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
+  const nowIso = new Date().toISOString();
   data.wedding = {
     ...data.wedding,
     ...updates,
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowIso,
   };
   await saveStore(data);
   return data.wedding;
 }
 
 export async function updateCoupleInfo(updates: Partial<CoupleInfo>): Promise<CoupleInfo> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.couple = {
     ...data.couple,
     ...updates,
@@ -443,7 +464,7 @@ export async function updateCoupleInfo(updates: Partial<CoupleInfo>): Promise<Co
 }
 
 export async function updateSectionVisibility(updates: Partial<SectionVisibility>): Promise<SectionVisibility> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.sectionVisibility = {
     ...data.sectionVisibility,
     ...updates,
@@ -458,7 +479,7 @@ export async function getEvents(): Promise<WeddingEvent[]> {
 }
 
 export async function createEvent(event: Omit<WeddingEvent, "id">): Promise<WeddingEvent> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   const newEvent: WeddingEvent = {
     ...event,
     id: `event-${Date.now()}`,
@@ -470,7 +491,7 @@ export async function createEvent(event: Omit<WeddingEvent, "id">): Promise<Wedd
 }
 
 export async function updateEvent(id: string, updates: Partial<WeddingEvent>): Promise<WeddingEvent> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   const idx = data.events.findIndex((e) => e.id === id);
   if (idx === -1) throw new Error("Event not found");
   data.events[idx] = { ...data.events[idx], ...updates };
@@ -479,14 +500,14 @@ export async function updateEvent(id: string, updates: Partial<WeddingEvent>): P
 }
 
 export async function deleteEvent(id: string): Promise<boolean> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.events = data.events.filter((e) => e.id !== id);
   await saveStore(data);
   return true;
 }
 
 export async function reorderEvents(orderedIds: string[]): Promise<WeddingEvent[]> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.events.forEach((evt) => {
     const idx = orderedIds.indexOf(evt.id);
     if (idx !== -1) {
@@ -499,21 +520,21 @@ export async function reorderEvents(orderedIds: string[]): Promise<WeddingEvent[
 }
 
 export async function updateStory(items: StoryItem[]): Promise<StoryItem[]> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.story = items;
   await saveStore(data);
   return data.story;
 }
 
 export async function updateTimeline(items: TimelineItem[]): Promise<TimelineItem[]> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.timeline = items;
   await saveStore(data);
   return data.timeline;
 }
 
 export async function updateVenue(updates: Partial<VenueInfo>): Promise<VenueInfo> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.venue = { ...data.venue, ...updates };
   await saveStore(data);
   return data.venue;
@@ -525,7 +546,7 @@ export async function getGallery(): Promise<GalleryItem[]> {
 }
 
 export async function addGalleryItem(item: Omit<GalleryItem, "id">): Promise<GalleryItem> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   const newItem: GalleryItem = {
     ...item,
     id: `gal-${Date.now()}`,
@@ -537,21 +558,21 @@ export async function addGalleryItem(item: Omit<GalleryItem, "id">): Promise<Gal
 }
 
 export async function deleteGalleryItem(id: string): Promise<boolean> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.gallery = data.gallery.filter((g) => g.id !== id);
   await saveStore(data);
   return true;
 }
 
 export async function updateGallery(items: GalleryItem[]): Promise<GalleryItem[]> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.gallery = items;
   await saveStore(data);
   return data.gallery;
 }
 
 export async function updateFamily(updates: Partial<FamilyInfo>): Promise<FamilyInfo> {
-  const data = await ensureStore(true);
+  const data = await ensureStore(false);
   data.family = { ...data.family, ...updates };
   await saveStore(data);
   return data.family;
