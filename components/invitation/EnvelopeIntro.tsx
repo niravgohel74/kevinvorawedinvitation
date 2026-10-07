@@ -5,6 +5,7 @@ import { WeddingDetails } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { GanpatiLineArt } from "@/components/ui/GanpatiLineArt";
 import { WaxSeal } from "@/components/ui/WaxSeal";
+import { RichText } from "@/components/ui/RichText";
 import confetti from "canvas-confetti";
 
 interface EnvelopeIntroProps {
@@ -23,8 +24,10 @@ export function EnvelopeIntro({
   const [isOpenTriggered, setIsOpenTriggered] = useState(false);
 
   const getMonogram = () => {
-    const g = wedding.groomName ? wedding.groomName[0] : "K";
-    const b = wedding.brideName ? wedding.brideName[0] : "V";
+    const gClean = (wedding.groomName || "K").replace(/<[^>]*>/g, "").trim();
+    const bClean = (wedding.brideName || "V").replace(/<[^>]*>/g, "").trim();
+    const g = gClean ? gClean[0] : "K";
+    const b = bClean ? bClean[0] : "V";
     return `${g} & ${b}`;
   };
 
@@ -102,7 +105,7 @@ export function EnvelopeIntro({
           {/* Couple Names - Groom First */}
           <div className="relative z-10 my-6 sm:my-8 space-y-1">
             <h1 className="font-editorial-serif text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-[#202020]">
-              {wedding.groomName}
+              <RichText content={wedding.groomName} />
             </h1>
             <div className="flex items-center justify-center gap-3 text-[#C9B38C]">
               <span className="h-[1px] w-8 bg-[#C9B38C]/50" />
@@ -110,7 +113,7 @@ export function EnvelopeIntro({
               <span className="h-[1px] w-8 bg-[#C9B38C]/50" />
             </div>
             <h1 className="font-editorial-serif text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-[#202020]">
-              {wedding.brideName}
+              <RichText content={wedding.brideName} />
             </h1>
           </div>
 

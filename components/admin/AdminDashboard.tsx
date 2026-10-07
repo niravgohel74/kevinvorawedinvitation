@@ -51,6 +51,7 @@ import {
   Scissors,
   Type,
   Palette,
+  RotateCcw,
 } from "lucide-react";
 import { PublicInvitationView } from "@/components/invitation/PublicInvitationView";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
@@ -60,6 +61,8 @@ import { AudioTrimmerModal } from "@/components/admin/AudioTrimmerModal";
 import { safeFetchJson } from "@/lib/apiHelper";
 import { MAX_AUDIO_UPLOAD_BYTES, uploadAudioToStorage } from "@/lib/uploadAudio";
 import { ShagunDeleteModal } from "@/components/admin/ShagunDeleteModal";
+import { initialWeddingData } from "@/data/defaultData";
+import { RichText } from "@/components/ui/RichText";
 
 interface AdminDashboardProps {
   initialData: WeddingData;
@@ -73,6 +76,10 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const [splitPreview, setSplitPreview] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string>("");
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Event editing state
+  const [editingEvent, setEditingEvent] = useState<WeddingEvent | null>(null);
+  const [isSavingEvent, setIsSavingEvent] = useState<boolean>(false);
 
   // Audio preview in Admin
   const [previewingAudio, setPreviewingAudio] = useState<string | null>(null);
@@ -336,6 +343,159 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const showToast = (msg: string) => {
     setSaveStatus(msg);
     setTimeout(() => setSaveStatus(""), 4000);
+  };
+
+  const stripAllHtmlTags = (str: string | undefined): string => {
+    if (!str || typeof str !== "string") return str || "";
+    return str.replace(/<[^>]*>/g, "").trim();
+  };
+
+  const handleGlobalResetStyling = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to reset all text styling? This will remove all custom formatting (bold, italic, colors, fonts) across all fields and restore default royal typography."
+    );
+    if (!confirmed) return;
+
+    const resetWedding: WeddingDetails = {
+      ...data.wedding,
+      groomName: stripAllHtmlTags(data.wedding.groomName),
+      brideName: stripAllHtmlTags(data.wedding.brideName),
+      weddingTime: stripAllHtmlTags(data.wedding.weddingTime),
+      location: stripAllHtmlTags(data.wedding.location),
+      city: stripAllHtmlTags(data.wedding.city),
+      hashtag: stripAllHtmlTags(data.wedding.hashtag),
+      invitationSubtitle: stripAllHtmlTags(data.wedding.invitationSubtitle),
+      heroTagline: stripAllHtmlTags(data.wedding.heroTagline),
+      heroQuote: stripAllHtmlTags(data.wedding.heroQuote),
+      introText: stripAllHtmlTags(data.wedding.introText),
+      closingMessage: stripAllHtmlTags(data.wedding.closingMessage),
+      textStyling: {
+        headingFont: "editorial-serif",
+        bodyFont: "sans",
+        fontSizeScale: "normal",
+        headingColor: "#202020",
+        accentColor: "#9E814D",
+        bodyColor: "#665E55",
+        isBoldHeading: false,
+        isItalicHeading: false,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    const resetCouple: CoupleInfo = {
+      ...data.couple,
+      groomName: stripAllHtmlTags(data.couple.groomName),
+      groomTitle: stripAllHtmlTags(data.couple.groomTitle),
+      groomBio: stripAllHtmlTags(data.couple.groomBio),
+      brideName: stripAllHtmlTags(data.couple.brideName),
+      brideTitle: stripAllHtmlTags(data.couple.brideTitle),
+      brideBio: stripAllHtmlTags(data.couple.brideBio),
+      quote: stripAllHtmlTags(data.couple.quote),
+    };
+
+    const resetEvents = data.events.map((evt) => ({
+      ...evt,
+      name: stripAllHtmlTags(evt.name),
+      date: stripAllHtmlTags(evt.date),
+      time: stripAllHtmlTags(evt.time),
+      venue: stripAllHtmlTags(evt.venue),
+      address: stripAllHtmlTags(evt.address),
+      dressCode: stripAllHtmlTags(evt.dressCode),
+      description: stripAllHtmlTags(evt.description),
+    }));
+
+    const resetStory = data.story.map((st) => ({
+      ...st,
+      title: stripAllHtmlTags(st.title),
+      description: stripAllHtmlTags(st.description),
+    }));
+
+    const resetTimeline = data.timeline.map((tm) => ({
+      ...tm,
+      time: stripAllHtmlTags(tm.time),
+      title: stripAllHtmlTags(tm.title),
+      description: stripAllHtmlTags(tm.description),
+    }));
+
+    const resetVenue: VenueInfo = {
+      ...data.venue,
+      name: stripAllHtmlTags(data.venue.name),
+      cityState: stripAllHtmlTags(data.venue.cityState),
+      address: stripAllHtmlTags(data.venue.address),
+      description: stripAllHtmlTags(data.venue.description),
+      airportInfo: stripAllHtmlTags(data.venue.airportInfo),
+      accommodations: stripAllHtmlTags(data.venue.accommodations),
+    };
+
+    const resetFamily: FamilyInfo = {
+      ...data.family,
+      groomFamilyTitle: stripAllHtmlTags(data.family.groomFamilyTitle),
+      groomParents: stripAllHtmlTags(data.family.groomParents),
+      brideFamilyTitle: stripAllHtmlTags(data.family.brideFamilyTitle),
+      brideParents: stripAllHtmlTags(data.family.brideParents),
+      blessingQuote: stripAllHtmlTags(data.family.blessingQuote),
+    };
+
+    const updated: WeddingData = {
+      ...data,
+      wedding: resetWedding,
+      couple: resetCouple,
+      events: resetEvents,
+      story: resetStory,
+      timeline: resetTimeline,
+      venue: resetVenue,
+      family: resetFamily,
+    };
+
+    persistLocalBackup(updated);
+
+    setIsSaving(true);
+    try {
+      const fetchRes = await fetch("/api/wedding", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+      const res = await safeFetchJson<{ success: boolean }>(fetchRes, "reset styling");
+      if (res?.success) {
+        showToast("All text styling has been reset to clean royal defaults!");
+      } else {
+        showToast("Styling reset locally.");
+      }
+    } catch {
+      showToast("Styling reset locally.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveEditedEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEvent) return;
+    setIsSavingEvent(true);
+    try {
+      const res = await fetch(`/api/events/${editingEvent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingEvent),
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        const updatedEvents = data.events.map((evt) =>
+          evt.id === editingEvent.id ? editingEvent : evt
+        );
+        const nextData = { ...data, events: updatedEvents };
+        persistLocalBackup(nextData);
+        showToast("Event updated successfully!");
+        setEditingEvent(null);
+      } else {
+        showToast(resData.error || "Failed to update event");
+      }
+    } catch {
+      showToast("Failed to update event");
+    } finally {
+      setIsSavingEvent(false);
+    }
   };
 
   // Logout handler
@@ -2145,50 +2305,57 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
             {/* TAB: WEDDING DETAILS */}
             {activeTab === "details" && (
               <form onSubmit={saveWeddingDetails} className="max-w-3xl mx-auto space-y-6">
-                <div>
-                  <h2 className="font-editorial-serif text-3xl text-[#202020]">Wedding Details</h2>
-                  <p className="text-xs text-[#736B63] mt-1">
-                    Configure Groom name, Bride name, date, location, hashtag, and hero image.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-editorial-serif text-3xl text-[#202020]">Wedding Details</h2>
+                    <p className="text-xs text-[#736B63] mt-1">
+                      Configure Groom name, Bride name, date, location, hashtag, and hero image. Each text field supports individual colors, fonts, bold, and italic styling.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGlobalResetStyling}
+                    className="text-xs px-3.5 py-2 rounded-xl bg-[#F6F2EB] hover:bg-stone-200 text-[#5A524A] hover:text-[#202020] border border-[#E9E1D5] flex items-center gap-1.5 font-medium transition-colors self-start sm:self-auto shrink-0 shadow-2xs"
+                    title="Reset all custom text styling tags across all sections to clean defaults"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-[#9E814D]" />
+                    <span>Reset All Text Styles</span>
+                  </button>
                 </div>
 
                 <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-blue-900 uppercase tracking-wider block">
-                        Groom Name (First) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={data.wedding.groomName}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, groomName: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-blue-200 text-sm text-[#202020] focus:ring-2 focus:ring-blue-400 font-medium"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Groom Name (First)"
+                      required
+                      rows={1}
+                      value={data.wedding.groomName}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, groomName: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.groomName}
+                      placeholder="e.g. Kevin"
+                      helpText="Format groom name with custom colors, bold, or elegant script fonts."
+                    />
 
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-rose-900 uppercase tracking-wider block">
-                        Bride Name (Second) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={data.wedding.brideName}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, brideName: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-rose-200 text-sm text-[#202020] focus:ring-2 focus:ring-rose-400 font-medium"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Bride Name (Second)"
+                      required
+                      rows={1}
+                      value={data.wedding.brideName}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, brideName: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.brideName}
+                      placeholder="e.g. Moksha"
+                      helpText="Format bride name with custom colors, bold, or elegant script fonts."
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        Wedding Date (YYYY-MM-DD)
+                      <label className="text-xs font-semibold text-[#5A524A] uppercase tracking-wider block">
+                        Wedding Date (YYYY-MM-DD) <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="date"
@@ -2197,100 +2364,80 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                         onChange={(e) =>
                           setData({ ...data, wedding: { ...data.wedding, weddingDate: e.target.value } })
                         }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C] bg-[#FCFAF6]"
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        Ceremony Time
-                      </label>
-                      <input
-                        type="text"
-                        value={data.wedding.weddingTime}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, weddingTime: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        Location / Venue Name
-                      </label>
-                      <input
-                        type="text"
-                        value={data.wedding.location}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, location: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        City &amp; State
-                      </label>
-                      <input
-                        type="text"
-                        value={data.wedding.city}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, city: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                      Wedding Hashtag
-                    </label>
-                    <input
-                      type="text"
-                      value={data.wedding.hashtag}
-                      onChange={(e) =>
-                        setData({ ...data, wedding: { ...data.wedding, hashtag: e.target.value } })
+                    <RichTextEditorField
+                      label="Ceremony Time"
+                      rows={1}
+                      value={data.wedding.weddingTime}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, weddingTime: val } })
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
+                      defaultOriginalValue={initialWeddingData.wedding.weddingTime}
+                      placeholder="e.g. 12:00 PM"
                     />
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <RichTextEditorField
+                      label="Location / Venue Name"
+                      rows={1}
+                      value={data.wedding.location}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, location: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.location}
+                      placeholder="e.g. Kunvarbai Jain Dharmshala"
+                    />
+
+                    <RichTextEditorField
+                      label="City & State"
+                      rows={1}
+                      value={data.wedding.city}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, city: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.city}
+                      placeholder="e.g. Jamnagar, Gujarat"
+                    />
+                  </div>
+
+                  <RichTextEditorField
+                    label="Wedding Hashtag"
+                    rows={1}
+                    value={data.wedding.hashtag}
+                    onChange={(val) =>
+                      setData({ ...data, wedding: { ...data.wedding, hashtag: val } })
+                    }
+                    defaultOriginalValue={initialWeddingData.wedding.hashtag}
+                    placeholder="e.g. #MokshVin"
+                  />
+
                   {/* Hero Quotations & Taglines */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        Hero Subtitle / Headline
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Two Stories, One Chapter"
-                        value={data.wedding.invitationSubtitle || ""}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, invitationSubtitle: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Hero Subtitle / Headline"
+                      rows={1}
+                      value={data.wedding.invitationSubtitle || ""}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, invitationSubtitle: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.invitationSubtitle}
+                      placeholder="e.g. Two Stories, One Chapter"
+                    />
 
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] uppercase tracking-wider block">
-                        Couple Micro-Tagline
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Two Souls • One Heartbeat"
-                        value={data.wedding.heroTagline || ""}
-                        onChange={(e) =>
-                          setData({ ...data, wedding: { ...data.wedding, heroTagline: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm text-[#202020] focus:ring-2 focus:ring-[#C9B38C]"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Couple Micro-Tagline"
+                      rows={1}
+                      value={data.wedding.heroTagline || ""}
+                      onChange={(val) =>
+                        setData({ ...data, wedding: { ...data.wedding, heroTagline: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.wedding.heroTagline}
+                      placeholder="e.g. Two Souls • One Heartbeat"
+                    />
                   </div>
 
                   <RichTextEditorField
@@ -2299,6 +2446,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     onChange={(val) =>
                       setData({ ...data, wedding: { ...data.wedding, heroQuote: val } })
                     }
+                    defaultOriginalValue={initialWeddingData.wedding.heroQuote}
                     placeholder="e.g. In the quiet rhythm of our laughter and in every shared dream, we found our forever."
                     helpText="Format text with bold, italic, custom color, font size, and fonts."
                   />
@@ -2327,6 +2475,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     onChange={(val) =>
                       setData({ ...data, wedding: { ...data.wedding, introText: val } })
                     }
+                    defaultOriginalValue={initialWeddingData.wedding.introText}
                     placeholder="e.g. With the divine blessings of Almighty..."
                     helpText="Format text with bold, italic, custom color, font size, and fonts."
                   />
@@ -2337,6 +2486,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     onChange={(val) =>
                       setData({ ...data, wedding: { ...data.wedding, closingMessage: val } })
                     }
+                    defaultOriginalValue={initialWeddingData.wedding.closingMessage}
                     placeholder="e.g. Thank you for being part of our story and blessing our new beginning."
                     helpText="Format text with bold, italic, custom color, font size, and fonts."
                   />
@@ -2385,6 +2535,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     }
                     groomName={data.wedding.groomName}
                     brideName={data.wedding.brideName}
+                    onGlobalResetStyling={handleGlobalResetStyling}
                   />
                 </div>
 
@@ -2405,37 +2556,33 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                 <div>
                   <h2 className="font-editorial-serif text-3xl text-[#202020]">The Couple</h2>
                   <p className="text-xs text-[#736B63] mt-1">
-                    Groom profile (first) and Bride profile (second) with photos, titles, and couple quote.
+                    Groom profile (first) and Bride profile (second) with photos, titles, and couple quote. Each text field supports individual colors, fonts, and bold/italic styling.
                   </p>
                 </div>
 
                 <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-6">
                   {/* Groom Section - First */}
-                  <div className="space-y-3 pb-6 border-b border-[#E9E1D5]">
+                  <div className="space-y-4 pb-6 border-b border-[#E9E1D5]">
                     <h3 className="font-editorial-serif text-xl text-blue-950">Groom Profile (First)</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[#5A524A] block">Full Name</label>
-                        <input
-                          type="text"
-                          value={data.couple.groomName}
-                          onChange={(e) =>
-                            setData({ ...data, couple: { ...data.couple, groomName: e.target.value } })
-                          }
-                          className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[#5A524A] block">Sub-Title / Lineage</label>
-                        <input
-                          type="text"
-                          value={data.couple.groomTitle || ""}
-                          onChange={(e) =>
-                            setData({ ...data, couple: { ...data.couple, groomTitle: e.target.value } })
-                          }
-                          className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                        />
-                      </div>
+                      <RichTextEditorField
+                        label="Groom Full Name"
+                        rows={1}
+                        value={data.couple.groomName}
+                        onChange={(val) =>
+                          setData({ ...data, couple: { ...data.couple, groomName: val } })
+                        }
+                        defaultOriginalValue={initialWeddingData.couple.groomName}
+                      />
+                      <RichTextEditorField
+                        label="Sub-Title / Lineage"
+                        rows={1}
+                        value={data.couple.groomTitle || ""}
+                        onChange={(val) =>
+                          setData({ ...data, couple: { ...data.couple, groomTitle: val } })
+                        }
+                        defaultOriginalValue={initialWeddingData.couple.groomTitle}
+                      />
                     </div>
                     <ImageUploadField
                       label="Groom Portrait Photo"
@@ -2445,45 +2592,39 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                       }
                       helpText="Square or portrait photo of the groom."
                     />
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">Bio / Notes</label>
-                      <textarea
-                        rows={2}
-                        value={data.couple.groomBio}
-                        onChange={(e) =>
-                          setData({ ...data, couple: { ...data.couple, groomBio: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Bio / Notes"
+                      rows={2}
+                      value={data.couple.groomBio}
+                      onChange={(val) =>
+                        setData({ ...data, couple: { ...data.couple, groomBio: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.couple.groomBio}
+                    />
                   </div>
 
                   {/* Bride Section - Second */}
-                  <div className="space-y-3 pb-6 border-b border-[#E9E1D5]">
+                  <div className="space-y-4 pb-6 border-b border-[#E9E1D5]">
                     <h3 className="font-editorial-serif text-xl text-rose-950">Bride Profile (Second)</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[#5A524A] block">Full Name</label>
-                        <input
-                          type="text"
-                          value={data.couple.brideName}
-                          onChange={(e) =>
-                            setData({ ...data, couple: { ...data.couple, brideName: e.target.value } })
-                          }
-                          className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-[#5A524A] block">Sub-Title / Lineage</label>
-                        <input
-                          type="text"
-                          value={data.couple.brideTitle || ""}
-                          onChange={(e) =>
-                            setData({ ...data, couple: { ...data.couple, brideTitle: e.target.value } })
-                          }
-                          className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                        />
-                      </div>
+                      <RichTextEditorField
+                        label="Bride Full Name"
+                        rows={1}
+                        value={data.couple.brideName}
+                        onChange={(val) =>
+                          setData({ ...data, couple: { ...data.couple, brideName: val } })
+                        }
+                        defaultOriginalValue={initialWeddingData.couple.brideName}
+                      />
+                      <RichTextEditorField
+                        label="Sub-Title / Lineage"
+                        rows={1}
+                        value={data.couple.brideTitle || ""}
+                        onChange={(val) =>
+                          setData({ ...data, couple: { ...data.couple, brideTitle: val } })
+                        }
+                        defaultOriginalValue={initialWeddingData.couple.brideTitle}
+                      />
                     </div>
                     <ImageUploadField
                       label="Bride Portrait Photo"
@@ -2493,31 +2634,27 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                       }
                       helpText="Square or portrait photo of the bride."
                     />
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">Bio / Notes</label>
-                      <textarea
-                        rows={2}
-                        value={data.couple.brideBio}
-                        onChange={(e) =>
-                          setData({ ...data, couple: { ...data.couple, brideBio: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Bio / Notes"
+                      rows={2}
+                      value={data.couple.brideBio}
+                      onChange={(val) =>
+                        setData({ ...data, couple: { ...data.couple, brideBio: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.couple.brideBio}
+                    />
                   </div>
 
                   {/* Couple Quote */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] block">Featured Quote</label>
-                    <input
-                      type="text"
-                      value={data.couple.quote}
-                      onChange={(e) =>
-                        setData({ ...data, couple: { ...data.couple, quote: e.target.value } })
-                      }
-                      className="w-full px-3.5 py-2 rounded-xl border border-[#E9E1D5] text-sm"
-                    />
-                  </div>
+                  <RichTextEditorField
+                    label="Featured Couple Quote"
+                    rows={2}
+                    value={data.couple.quote}
+                    onChange={(val) =>
+                      setData({ ...data, couple: { ...data.couple, quote: val } })
+                    }
+                    defaultOriginalValue={initialWeddingData.couple.quote}
+                  />
                 </div>
 
                 <button
@@ -2573,19 +2710,19 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                         </button>
                       </div>
 
-                      <input
-                        type="text"
+                      <RichTextEditorField
+                        label="Milestone Title"
+                        rows={1}
                         value={item.title}
-                        onChange={(e) => handleUpdateStoryItem(item.id, "title", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#E9E1D5] text-sm font-medium"
+                        onChange={(val) => handleUpdateStoryItem(item.id, "title", val)}
                         placeholder="Title (e.g. The First Hello)"
                       />
 
-                      <textarea
+                      <RichTextEditorField
+                        label="Milestone Story Details"
                         rows={2}
                         value={item.description}
-                        onChange={(e) => handleUpdateStoryItem(item.id, "description", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#E9E1D5] text-xs text-[#5A524A]"
+                        onChange={(val) => handleUpdateStoryItem(item.id, "description", val)}
                         placeholder="Story details..."
                       />
 
@@ -2630,6 +2767,120 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   </button>
                 </div>
 
+                {/* Edit Event Modal */}
+                {editingEvent && (
+                  <form
+                    onSubmit={handleSaveEditedEvent}
+                    className="p-6 rounded-2xl bg-white border-2 border-[#9E814D] shadow-xl space-y-4 animate-fade-in"
+                  >
+                    <div className="flex items-center justify-between border-b border-[#E9E1D5] pb-3">
+                      <h3 className="font-editorial-serif text-2xl text-[#202020]">Edit Celebration</h3>
+                      <button
+                        type="button"
+                        onClick={() => setEditingEvent(null)}
+                        className="text-stone-400 hover:text-stone-800 text-sm font-semibold"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <RichTextEditorField
+                        label="Event Name"
+                        required
+                        rows={1}
+                        placeholder="e.g. Sangeet & Cocktail"
+                        value={editingEvent.name}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, name: val })}
+                      />
+                      <RichTextEditorField
+                        label="Date"
+                        required
+                        rows={1}
+                        placeholder="e.g. 17 December 2026"
+                        value={editingEvent.date}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, date: val })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <RichTextEditorField
+                        label="Time"
+                        rows={1}
+                        placeholder="07:00 PM onwards"
+                        value={editingEvent.time}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, time: val })}
+                      />
+                      <RichTextEditorField
+                        label="Dress Code"
+                        rows={1}
+                        placeholder="e.g. Royal Velvet & Sparkles"
+                        value={editingEvent.dressCode || ""}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, dressCode: val })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <RichTextEditorField
+                        label="Venue Hall / Lawn"
+                        rows={1}
+                        placeholder="e.g. Royal Courtyard"
+                        value={editingEvent.venue}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, venue: val })}
+                      />
+                      <RichTextEditorField
+                        label="Address"
+                        rows={1}
+                        placeholder="City, State"
+                        value={editingEvent.address || ""}
+                        onChange={(val) => setEditingEvent({ ...editingEvent, address: val })}
+                      />
+                    </div>
+
+                    <RichTextEditorField
+                      label="Description"
+                      rows={2}
+                      placeholder="An evening of celebration and music..."
+                      value={editingEvent.description || ""}
+                      onChange={(val) => setEditingEvent({ ...editingEvent, description: val })}
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <ImageUploadField
+                        label="Event Photo"
+                        value={editingEvent.image || ""}
+                        onChange={(url) => setEditingEvent({ ...editingEvent, image: url })}
+                      />
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-[#5A524A] uppercase tracking-wider block">Google Maps URL</label>
+                        <input
+                          type="url"
+                          value={editingEvent.mapsUrl || ""}
+                          onChange={(e) => setEditingEvent({ ...editingEvent, mapsUrl: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-[#E9E1D5] text-xs bg-[#FCFAF6]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <button
+                        type="submit"
+                        disabled={isSavingEvent}
+                        className="px-6 py-2.5 rounded-full bg-[#202020] text-[#FCFAF6] text-xs font-medium tracking-wider uppercase hover:bg-[#38332E] disabled:opacity-50"
+                      >
+                        {isSavingEvent ? "Saving..." : "Save Event Details"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingEvent(null)}
+                        className="px-4 py-2.5 rounded-full text-xs text-[#736B63] hover:text-[#202020]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+
                 {/* Add Event Modal */}
                 {newEventModal && (
                   <form
@@ -2638,102 +2889,79 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   >
                     <h3 className="font-editorial-serif text-2xl text-[#202020]">Add New Celebration</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Event Name</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Sangeet &amp; Cocktail"
-                          value={newEvent.name}
-                          onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Date</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. 17 December 2026"
-                          value={newEvent.date}
-                          onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Time</label>
-                        <input
-                          type="text"
-                          placeholder="07:00 PM onwards"
-                          value={newEvent.time}
-                          onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Dress Code</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Royal Velvet &amp; Sparkles"
-                          value={newEvent.dressCode}
-                          onChange={(e) => setNewEvent({ ...newEvent, dressCode: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Venue Hall / Lawn</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Royal Courtyard"
-                          value={newEvent.venue}
-                          onChange={(e) => setNewEvent({ ...newEvent, venue: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Address</label>
-                        <input
-                          type="text"
-                          placeholder="City, State"
-                          value={newEvent.address}
-                          onChange={(e) => setNewEvent({ ...newEvent, address: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-medium text-[#5A524A] block mb-1">Description</label>
-                      <textarea
-                        rows={2}
-                        placeholder="An evening of celebration and music..."
-                        value={newEvent.description}
-                        onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
-                        className="w-full px-3 py-2 rounded-lg border text-sm"
+                      <RichTextEditorField
+                        label="Event Name"
+                        required
+                        rows={1}
+                        placeholder="e.g. Sangeet & Cocktail"
+                        value={newEvent.name || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, name: val })}
+                      />
+                      <RichTextEditorField
+                        label="Date"
+                        required
+                        rows={1}
+                        placeholder="e.g. 17 December 2026"
+                        value={newEvent.date || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, date: val })}
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <ImageUploadField
-                          label="Event Photo"
-                          value={newEvent.image || ""}
-                          onChange={(url) => setNewEvent({ ...newEvent, image: url })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-[#5A524A] block mb-1">Google Maps URL</label>
+                      <RichTextEditorField
+                        label="Time"
+                        rows={1}
+                        placeholder="07:00 PM onwards"
+                        value={newEvent.time || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, time: val })}
+                      />
+                      <RichTextEditorField
+                        label="Dress Code"
+                        rows={1}
+                        placeholder="e.g. Royal Velvet & Sparkles"
+                        value={newEvent.dressCode || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, dressCode: val })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <RichTextEditorField
+                        label="Venue Hall / Lawn"
+                        rows={1}
+                        placeholder="e.g. Royal Courtyard"
+                        value={newEvent.venue || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, venue: val })}
+                      />
+                      <RichTextEditorField
+                        label="Address"
+                        rows={1}
+                        placeholder="City, State"
+                        value={newEvent.address || ""}
+                        onChange={(val) => setNewEvent({ ...newEvent, address: val })}
+                      />
+                    </div>
+
+                    <RichTextEditorField
+                      label="Description"
+                      rows={2}
+                      placeholder="An evening of celebration and music..."
+                      value={newEvent.description || ""}
+                      onChange={(val) => setNewEvent({ ...newEvent, description: val })}
+                    />
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <ImageUploadField
+                        label="Event Photo"
+                        value={newEvent.image || ""}
+                        onChange={(url) => setNewEvent({ ...newEvent, image: url })}
+                      />
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-[#5A524A] uppercase tracking-wider block">Google Maps URL</label>
                         <input
                           type="url"
                           value={newEvent.mapsUrl}
                           onChange={(e) => setNewEvent({ ...newEvent, mapsUrl: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border text-xs"
+                          className="w-full px-3 py-2 rounded-xl border border-[#E9E1D5] text-xs bg-[#FCFAF6]"
                         />
                       </div>
                     </div>
@@ -2741,7 +2969,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     <div className="flex items-center gap-3 pt-2">
                       <button
                         type="submit"
-                        className="px-6 py-2.5 rounded-full bg-[#202020] text-[#FCFAF6] text-xs font-medium tracking-wider uppercase"
+                        className="px-6 py-2.5 rounded-full bg-[#202020] text-[#FCFAF6] text-xs font-medium tracking-wider uppercase hover:bg-[#38332E]"
                       >
                         Create Event
                       </button>
@@ -2768,18 +2996,33 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                           <span className="font-editorial-serif text-lg font-semibold text-[#9E814D]">
                             0{idx + 1}
                           </span>
-                          <h4 className="font-editorial-serif text-2xl text-[#202020]">{evt.name}</h4>
+                          <RichText content={evt.name} as="h4" className="font-editorial-serif text-2xl text-[#202020]" />
                         </div>
-                        <p className="text-xs text-[#736B63]">
-                          {evt.date} • {evt.time} | {evt.venue}
-                        </p>
+                        <div className="text-xs text-[#736B63] flex flex-wrap items-center gap-1.5">
+                          <RichText content={evt.date} as="span" />
+                          <span>•</span>
+                          <RichText content={evt.time} as="span" />
+                          <span>|</span>
+                          <RichText content={evt.venue} as="span" />
+                        </div>
                         {evt.dressCode && (
-                          <p className="text-[11px] text-[#A8A096]">Attire: {evt.dressCode}</p>
+                          <div className="text-[11px] text-[#A8A096] flex items-center gap-1">
+                            <span>Attire:</span>
+                            <RichText content={evt.dressCode} as="span" />
+                          </div>
                         )}
                       </div>
 
-                      {/* Controls: Reorder and Delete */}
+                      {/* Controls: Edit, Reorder, and Delete */}
                       <div className="flex items-center gap-1.5 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingEvent(evt)}
+                          className="p-2 rounded-lg border border-[#C9B38C]/60 hover:bg-[#F8F5EF] text-[#7A5C28]"
+                          title="Edit celebration and style text"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           disabled={idx === 0}
@@ -2801,7 +3044,7 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                         <button
                           type="button"
                           onClick={() => handleDeleteEvent(evt.id)}
-                          className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-2"
+                          className="p-2 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-1"
                           title="Delete Event"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -2833,41 +3076,48 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   </button>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {data.timeline.map((item) => (
                     <div
                       key={item.id}
-                      className="p-4 rounded-xl bg-white border border-[#E9E1D5] flex items-center gap-3 shadow-sm"
+                      className="p-5 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-3"
                     >
-                      <input
-                        type="text"
-                        value={item.time}
-                        onChange={(e) => {
-                          const updated = data.timeline.map((t) =>
-                            t.id === item.id ? { ...t, time: e.target.value } : t
-                          );
-                          setData({ ...data, timeline: updated });
-                        }}
-                        className="w-28 px-3 py-1.5 rounded-lg border text-xs font-semibold text-[#9E814D]"
-                      />
-                      <input
-                        type="text"
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="w-48">
+                          <RichTextEditorField
+                            label="Step Time"
+                            rows={1}
+                            value={item.time}
+                            onChange={(val) => {
+                              const updated = data.timeline.map((t) =>
+                                t.id === item.id ? { ...t, time: val } : t
+                              );
+                              setData({ ...data, timeline: updated });
+                            }}
+                            placeholder="e.g. 04:30 PM"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTimeline(item.id)}
+                          className="text-red-500 hover:text-red-700 p-2 rounded-lg border border-red-100 hover:bg-red-50 self-start mt-4"
+                          title="Delete timeline step"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <RichTextEditorField
+                        label="Step Title & Details"
+                        rows={1}
                         value={item.title}
-                        onChange={(e) => {
+                        onChange={(val) => {
                           const updated = data.timeline.map((t) =>
-                            t.id === item.id ? { ...t, title: e.target.value } : t
+                            t.id === item.id ? { ...t, title: val } : t
                           );
                           setData({ ...data, timeline: updated });
                         }}
-                        className="flex-1 px-3 py-1.5 rounded-lg border text-sm"
+                        placeholder="e.g. Royal Baraat Arrival & Swagat"
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTimeline(item.id)}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -2895,51 +3145,48 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
 
                 <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">Venue Name</label>
-                      <input
-                        type="text"
-                        value={data.venue.name}
-                        onChange={(e) =>
-                          setData({ ...data, venue: { ...data.venue, name: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">City / State</label>
-                      <input
-                        type="text"
-                        value={data.venue.cityState}
-                        onChange={(e) =>
-                          setData({ ...data, venue: { ...data.venue, cityState: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] block">Street Address</label>
-                    <input
-                      type="text"
-                      value={data.venue.address}
-                      onChange={(e) =>
-                        setData({ ...data, venue: { ...data.venue, address: e.target.value } })
+                    <RichTextEditorField
+                      label="Venue Name"
+                      rows={1}
+                      value={data.venue.name}
+                      onChange={(val) =>
+                        setData({ ...data, venue: { ...data.venue, name: val } })
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
+                      defaultOriginalValue={initialWeddingData.venue.name}
+                      placeholder="e.g. The Leela Palace"
+                    />
+                    <RichTextEditorField
+                      label="City / State"
+                      rows={1}
+                      value={data.venue.cityState}
+                      onChange={(val) =>
+                        setData({ ...data, venue: { ...data.venue, cityState: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.venue.cityState}
+                      placeholder="e.g. Udaipur, Rajasthan"
                     />
                   </div>
 
+                  <RichTextEditorField
+                    label="Street Address"
+                    rows={1}
+                    value={data.venue.address}
+                    onChange={(val) =>
+                      setData({ ...data, venue: { ...data.venue, address: val } })
+                    }
+                    defaultOriginalValue={initialWeddingData.venue.address}
+                    placeholder="e.g. Lake Pichola, Udaipur, Rajasthan 313001"
+                  />
+
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] block">Google Maps Link</label>
+                    <label className="text-xs font-semibold text-[#5A524A] uppercase tracking-wider block">Google Maps Link</label>
                     <input
                       type="url"
                       value={data.venue.mapsUrl}
                       onChange={(e) =>
                         setData({ ...data, venue: { ...data.venue, mapsUrl: e.target.value } })
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#E9E1D5] text-sm bg-[#FCFAF6]"
                     />
                   </div>
 
@@ -2952,41 +3199,38 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     helpText="Photo of the wedding resort, palace, or mandap location."
                   />
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] block">Venue Description</label>
-                    <textarea
-                      rows={3}
-                      value={data.venue.description}
-                      onChange={(e) =>
-                        setData({ ...data, venue: { ...data.venue, description: e.target.value } })
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                    />
-                  </div>
+                  <RichTextEditorField
+                    label="Venue Description"
+                    rows={3}
+                    value={data.venue.description}
+                    onChange={(val) =>
+                      setData({ ...data, venue: { ...data.venue, description: val } })
+                    }
+                    defaultOriginalValue={initialWeddingData.venue.description}
+                    placeholder="Grand heritage palace nestled on the serene waters..."
+                  />
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">Airport / Transfers Note</label>
-                      <textarea
-                        rows={2}
-                        value={data.venue.airportInfo || ""}
-                        onChange={(e) =>
-                          setData({ ...data, venue: { ...data.venue, airportInfo: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2 rounded-xl border text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#5A524A] block">Accommodations Note</label>
-                      <textarea
-                        rows={2}
-                        value={data.venue.accommodations || ""}
-                        onChange={(e) =>
-                          setData({ ...data, venue: { ...data.venue, accommodations: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2 rounded-xl border text-xs"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Airport / Transfers Note"
+                      rows={2}
+                      value={data.venue.airportInfo || ""}
+                      onChange={(val) =>
+                        setData({ ...data, venue: { ...data.venue, airportInfo: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.venue.airportInfo}
+                      placeholder="Maharana Pratap Airport (UDR) is 45 mins away..."
+                    />
+                    <RichTextEditorField
+                      label="Accommodations Note"
+                      rows={2}
+                      value={data.venue.accommodations || ""}
+                      onChange={(val) =>
+                        setData({ ...data, venue: { ...data.venue, accommodations: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.venue.accommodations}
+                      placeholder="Luxury suites reserved for esteemed guests..."
+                    />
                   </div>
                 </div>
 
@@ -3140,67 +3384,62 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                 <div className="p-6 rounded-2xl bg-white border border-[#E9E1D5] shadow-sm space-y-5">
                   {/* Groom Family - First */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-blue-900 block">Groom Family Title (First)</label>
-                      <input
-                        type="text"
-                        value={data.family.groomFamilyTitle}
-                        onChange={(e) =>
-                          setData({ ...data, family: { ...data.family, groomFamilyTitle: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-blue-900 block">Groom Parents</label>
-                      <input
-                        type="text"
-                        value={data.family.groomParents}
-                        onChange={(e) =>
-                          setData({ ...data, family: { ...data.family, groomParents: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
+                    <RichTextEditorField
+                      label="Groom Family Title (First)"
+                      rows={1}
+                      value={data.family.groomFamilyTitle}
+                      onChange={(val) =>
+                        setData({ ...data, family: { ...data.family, groomFamilyTitle: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.family.groomFamilyTitle}
+                      placeholder="e.g. Groom's Family"
+                    />
+                    <RichTextEditorField
+                      label="Groom Parents"
+                      rows={1}
+                      value={data.family.groomParents}
+                      onChange={(val) =>
+                        setData({ ...data, family: { ...data.family, groomParents: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.family.groomParents}
+                      placeholder="e.g. Smt. Rekha & Shri Nilesh Shah"
+                    />
                   </div>
 
                   {/* Bride Family - Second */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-rose-900 block">Bride Family Title (Second)</label>
-                      <input
-                        type="text"
-                        value={data.family.brideFamilyTitle}
-                        onChange={(e) =>
-                          setData({ ...data, family: { ...data.family, brideFamilyTitle: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-semibold text-rose-900 block">Bride Parents</label>
-                      <input
-                        type="text"
-                        value={data.family.brideParents}
-                        onChange={(e) =>
-                          setData({ ...data, family: { ...data.family, brideParents: e.target.value } })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[#5A524A] block">Blessing Quote</label>
-                    <textarea
-                      rows={2}
-                      value={data.family.blessingQuote}
-                      onChange={(e) =>
-                        setData({ ...data, family: { ...data.family, blessingQuote: e.target.value } })
+                    <RichTextEditorField
+                      label="Bride Family Title (Second)"
+                      rows={1}
+                      value={data.family.brideFamilyTitle}
+                      onChange={(val) =>
+                        setData({ ...data, family: { ...data.family, brideFamilyTitle: val } })
                       }
-                      className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
+                      defaultOriginalValue={initialWeddingData.family.brideFamilyTitle}
+                      placeholder="e.g. Bride's Family"
+                    />
+                    <RichTextEditorField
+                      label="Bride Parents"
+                      rows={1}
+                      value={data.family.brideParents}
+                      onChange={(val) =>
+                        setData({ ...data, family: { ...data.family, brideParents: val } })
+                      }
+                      defaultOriginalValue={initialWeddingData.family.brideParents}
+                      placeholder="e.g. Smt. Bhavna & Shri Rajesh Patel"
                     />
                   </div>
+
+                  <RichTextEditorField
+                    label="Elder Blessings & Message"
+                    rows={2}
+                    value={data.family.blessingQuote}
+                    onChange={(val) =>
+                      setData({ ...data, family: { ...data.family, blessingQuote: val } })
+                    }
+                    defaultOriginalValue={initialWeddingData.family.blessingQuote}
+                    placeholder="e.g. Seeking blessings from our ancestors and elders..."
+                  />
                 </div>
 
                 <button

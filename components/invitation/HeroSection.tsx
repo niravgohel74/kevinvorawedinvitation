@@ -64,7 +64,7 @@ export function HeroSection({ wedding }: HeroSectionProps) {
         {/* Hashtag / Sub-badge */}
         {wedding.hashtag && (
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#C9B38C]/35 bg-[#161514]/60 backdrop-blur-md text-[11px] sm:text-xs tracking-[0.25em] text-[#C9B38C] uppercase">
-            <span>✧</span> {wedding.hashtag} <span>✧</span>
+            <span>✧</span> <RichText content={wedding.hashtag} /> <span>✧</span>
           </span>
         )}
 
@@ -80,7 +80,7 @@ export function HeroSection({ wedding }: HeroSectionProps) {
         {/* Grand Typography Names - Groom First */}
         <div className="space-y-1 sm:space-y-2">
           <h1 className="font-editorial-serif text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-light tracking-wide text-[#FFFFFF] drop-shadow-md">
-            {wedding.groomName}
+            <RichText content={wedding.groomName} />
           </h1>
           <div className="flex items-center justify-center gap-4 text-[#C9B38C] my-2">
             <span className="h-[1px] w-12 sm:w-20 bg-gradient-to-r from-transparent to-[#C9B38C]" />
@@ -88,7 +88,7 @@ export function HeroSection({ wedding }: HeroSectionProps) {
             <span className="h-[1px] w-12 sm:w-20 bg-gradient-to-l from-transparent to-[#C9B38C]" />
           </div>
           <h1 className="font-editorial-serif text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-light tracking-wide text-[#FFFFFF] drop-shadow-md">
-            {wedding.brideName}
+            <RichText content={wedding.brideName} />
           </h1>
         </div>
 

@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { VenueInfo } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { MapPin, Navigation, Plane, Hotel } from "lucide-react";
+import { RichText } from "@/components/ui/RichText";
 
 interface VenueSectionProps {
   venue: VenueInfo;
@@ -52,11 +53,11 @@ export function VenueSection({ venue }: VenueSectionProps) {
                 Royal Heritage Destination
               </span>
               <h3 className="font-editorial-serif text-3xl sm:text-4xl md:text-5xl font-light">
-                {venue.name}
+                <RichText content={venue.name} />
               </h3>
               <p className="text-xs sm:text-sm text-white/80 font-light flex items-center gap-1.5 pt-1">
                 <MapPin className="w-4 h-4 text-[#C9B38C] shrink-0" />
-                <span>{venue.address}, {venue.cityState}</span>
+                <span><RichText content={venue.address} />, <RichText content={venue.cityState} /></span>
               </p>
             </div>
           </div>
@@ -64,7 +65,7 @@ export function VenueSection({ venue }: VenueSectionProps) {
           {/* Details Body */}
           <div className="p-6 sm:p-10 space-y-8">
             <p className="text-sm sm:text-base text-[#575048] font-light leading-relaxed">
-              {venue.description}
+              <RichText content={venue.description} />
             </p>
 
             {/* Travel / Stay cards */}
@@ -76,7 +77,7 @@ export function VenueSection({ venue }: VenueSectionProps) {
                     <span>Travel & Transfers</span>
                   </div>
                   <p className="text-xs text-[#665E55] leading-relaxed font-light">
-                    {venue.airportInfo}
+                    <RichText content={venue.airportInfo} />
                   </p>
                 </div>
               )}
@@ -88,7 +89,7 @@ export function VenueSection({ venue }: VenueSectionProps) {
                     <span>Guest Accommodations</span>
                   </div>
                   <p className="text-xs text-[#665E55] leading-relaxed font-light">
-                    {venue.accommodations}
+                    <RichText content={venue.accommodations} />
                   </p>
                 </div>
               )}

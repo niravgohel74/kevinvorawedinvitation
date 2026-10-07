@@ -7,6 +7,7 @@ import confetti from "canvas-confetti";
 import { WeddingDetails } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { GanpatiLineArt } from "@/components/ui/GanpatiLineArt";
+import { RichText } from "@/components/ui/RichText";
 
 interface DateRevealSectionProps {
   wedding: WeddingDetails;
@@ -218,9 +219,9 @@ export function DateRevealSection({ wedding, className = "" }: DateRevealSection
                 </button>
 
                 <p className="font-editorial-serif text-3xl font-light tracking-wide text-[#FFF9EF] sm:text-4xl">
-                  {wedding.groomName}
+                  <RichText content={wedding.groomName} />
                   <span className="mx-3 italic text-[#E1C17F]">&</span>
-                  {wedding.brideName}
+                  <RichText content={wedding.brideName} />
                 </p>
               </div>
             </div>

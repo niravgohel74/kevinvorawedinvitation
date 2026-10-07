@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { TimelineItem } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { Clock } from "lucide-react";
+import { RichText } from "@/components/ui/RichText";
 
 interface TimelineSectionProps {
   timeline: TimelineItem[];
@@ -51,14 +52,14 @@ export function TimelineSection({ timeline }: TimelineSectionProps) {
               <div className="p-5 sm:p-6 rounded-2xl bg-[#F8F5EF] border border-[#C9B38C]/30 shadow-sm space-y-2">
                 <div className="flex items-center gap-2 text-xs font-semibold tracking-wider text-[#9E814D] uppercase">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>{item.time}</span>
+                  <span><RichText content={item.time} /></span>
                 </div>
                 <h3 className="font-editorial-serif text-xl sm:text-2xl text-[#202020]">
-                  {item.title}
+                  <RichText content={item.title} />
                 </h3>
                 {item.description && (
                   <p className="text-xs sm:text-sm text-[#665E55] font-light leading-relaxed">
-                    {item.description}
+                    <RichText content={item.description} />
                   </p>
                 )}
               </div>

@@ -18,31 +18,24 @@ function getSiteUrl(): string {
   try {
     const headersList = headers();
     const host = headersList.get("x-forwarded-host") || headersList.get("host") || "";
-    if (host.includes("localhost") || host.includes("127.0.0.1")) {
-      const proto = headersList.get("x-forwarded-proto") || "http";
+    if (host) {
+      const proto = headersList.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
       return `${proto}://${host}`;
     }
   } catch {
     // fallback
   }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
   return PROD_URL;
 }
 
-function resolveOgImageUrl(siteUrl: string, customOg?: string): string {
-  if (!customOg || !customOg.trim()) {
-    return `${siteUrl}/og-image.jpg?v=4`;
-  }
-  const trimmed = customOg.trim();
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    if (trimmed.includes("blob.vercel-storage.com")) {
-      return `${siteUrl}/api/media-proxy?url=${encodeURIComponent(trimmed)}`;
-    }
-    return trimmed;
-  }
-  if (trimmed.startsWith("/")) {
-    return `${siteUrl}${trimmed}`;
-  }
-  return `${siteUrl}/${trimmed}`;
+function resolveOgImageUrl(siteUrl: string, weddingData: any): string {
+  const timestamp = weddingData?.wedding?.updatedAt
+    ? new Date(weddingData.wedding.updatedAt).getTime()
+    : Date.now();
+  return `${siteUrl}/api/og?v=${timestamp}`;
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -61,7 +54,7 @@ export async function generateMetadata(): Promise<Metadata> {
     ? weddingData.wedding.introText.replace(/<[^>]*>/g, "").slice(0, 160)
     : `Join us to celebrate the royal wedding of ${groom} & ${bride} at ${venue}, ${city}.`;
 
-  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData?.wedding?.ogImage);
+  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData);
 
   return {
     metadataBase: new URL(siteUrl),
@@ -123,7 +116,7 @@ export default async function RootLayout({
     ? weddingData.wedding.introText.replace(/<[^>]*>/g, "").slice(0, 160)
     : DEFAULT_DESC;
 
-  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData?.wedding?.ogImage);
+  const ogImageUrl = resolveOgImageUrl(siteUrl, weddingData);
 
   return (
     <html lang="en" className="scroll-smooth">

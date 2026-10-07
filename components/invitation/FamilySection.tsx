@@ -2,6 +2,7 @@
 import React from "react";
 import { FamilyInfo } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
+import { RichText } from "@/components/ui/RichText";
 
 interface FamilySectionProps {
   family: FamilyInfo;
@@ -29,20 +30,20 @@ export function FamilySection({ family }: FamilySectionProps) {
           {/* Groom Family */}
           <div className="p-8 rounded-2xl bg-[#FCFAF6] border border-[#C9B38C]/35 space-y-3 shadow-sm">
             <h3 className="font-editorial-serif text-2xl sm:text-3xl text-[#202020]">
-              {family.groomFamilyTitle || "The Groom's Family"}
+              <RichText content={family.groomFamilyTitle || "The Groom's Family"} />
             </h3>
             <p className="text-xs sm:text-sm text-[#736B63] font-light leading-relaxed">
-              {family.groomParents}
+              <RichText content={family.groomParents} />
             </p>
           </div>
 
           {/* Bride Family */}
           <div className="p-8 rounded-2xl bg-[#FCFAF6] border border-[#C9B38C]/35 space-y-3 shadow-sm">
             <h3 className="font-editorial-serif text-2xl sm:text-3xl text-[#202020]">
-              {family.brideFamilyTitle || "The Bride's Family"}
+              <RichText content={family.brideFamilyTitle || "The Bride's Family"} />
             </h3>
             <p className="text-xs sm:text-sm text-[#736B63] font-light leading-relaxed">
-              {family.brideParents}
+              <RichText content={family.brideParents} />
             </p>
           </div>
         </div>
@@ -50,7 +51,7 @@ export function FamilySection({ family }: FamilySectionProps) {
         {/* Blessings Note */}
         {family.blessingQuote && (
           <p className="max-w-xl mx-auto font-editorial-serif text-base sm:text-lg italic text-[#665E55] pt-4">
-            &ldquo;{family.blessingQuote}&rdquo;
+            &ldquo;<RichText content={family.blessingQuote} />&rdquo;
           </p>
         )}
       </div>

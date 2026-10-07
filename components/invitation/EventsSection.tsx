@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { WeddingEvent } from "@/types/wedding";
 import { BotanicalMotif } from "@/components/ui/BotanicalMotif";
 import { MapPin, Calendar, Clock, Sparkles } from "lucide-react";
+import { RichText } from "@/components/ui/RichText";
 
 interface EventsSectionProps {
   events: WeddingEvent[];
@@ -81,7 +82,7 @@ export function EventsSection({ events }: EventsSectionProps) {
                   {evt.dressCode && (
                     <div className="absolute bottom-3 left-4 right-4 flex items-center gap-1.5 text-[11px] text-[#F8F5EF] font-light">
                       <Sparkles className="w-3.5 h-3.5 text-[#E5D3B3] shrink-0" />
-                      <span className="truncate">Attire: {evt.dressCode}</span>
+                      <span className="truncate">Attire: <RichText content={evt.dressCode} /></span>
                     </div>
                   )}
                 </div>
@@ -90,31 +91,31 @@ export function EventsSection({ events }: EventsSectionProps) {
                 <div className="p-6 sm:p-7 flex flex-col flex-grow justify-between space-y-5">
                   <div className="space-y-3">
                     <h3 className="font-editorial-serif text-2xl sm:text-3xl font-normal text-[#202020]">
-                      {evt.name}
+                      <RichText content={evt.name} />
                     </h3>
 
                     {/* Date & Time */}
                     <div className="space-y-1.5 text-xs text-[#736B63]">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5 text-[#9E814D] shrink-0" />
-                        <span className="font-medium text-[#4A443E]">{evt.date}</span>
+                        <span className="font-medium text-[#4A443E]"><RichText content={evt.date} /></span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-[#9E814D] shrink-0" />
-                        <span>{evt.time}</span>
+                        <span><RichText content={evt.time} /></span>
                       </div>
                       <div className="flex items-start gap-2 pt-1">
                         <MapPin className="w-3.5 h-3.5 text-[#9E814D] shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-medium text-[#202020]">{evt.venue}</p>
-                          <p className="text-[11px] text-[#8C847B]">{evt.address}</p>
+                          <p className="font-medium text-[#202020]"><RichText content={evt.venue} /></p>
+                          <p className="text-[11px] text-[#8C847B]"><RichText content={evt.address} /></p>
                         </div>
                       </div>
                     </div>
 
                     {/* Description */}
                     <p className="text-xs sm:text-sm text-[#575048] font-light leading-relaxed pt-2.5 border-t border-[#E9E1D5]/70">
-                      {evt.description}
+                      <RichText content={evt.description} />
                     </p>
                   </div>
                 </div>

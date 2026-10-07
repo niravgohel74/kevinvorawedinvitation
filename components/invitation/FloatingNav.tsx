@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { Menu, X, Heart } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { RichText } from "@/components/ui/RichText";
 
 interface NavProps {
   groomName?: string;
@@ -19,6 +20,10 @@ export function FloatingNav({ groomName = "K", brideName = "V" }: NavProps) {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const cleanGroom = (groomName || "K").replace(/<[^>]*>/g, "").trim();
+  const cleanBride = (brideName || "V").replace(/<[^>]*>/g, "").trim();
+  const initials = `${cleanGroom[0] || "K"} & ${cleanBride[0] || "V"}`;
 
   const navLinks = [
     { label: "Story", href: "#story" },
@@ -48,7 +53,7 @@ export function FloatingNav({ groomName = "K", brideName = "V" }: NavProps) {
         className="fixed top-5 left-1/2 -translate-x-1/2 z-40 hidden md:flex items-center gap-6 px-6 py-2.5 rounded-full bg-[#1A1816]/85 backdrop-blur-md border border-[#C9B38C]/30 text-white shadow-xl text-xs tracking-[0.2em] uppercase font-light"
       >
         <span className="font-editorial-serif text-sm text-[#C9B38C] font-semibold pr-2 border-r border-[#C9B38C]/30">
-          {groomName[0]} &amp; {brideName[0]}
+          {initials}
         </span>
 
         {navLinks.map((link) => (
@@ -92,7 +97,7 @@ export function FloatingNav({ groomName = "K", brideName = "V" }: NavProps) {
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#C9B38C]/20">
               <span className="font-editorial-serif text-lg text-[#C9B38C]">
-                {groomName} &amp; {brideName}
+                <RichText content={groomName} /> &amp; <RichText content={brideName} />
               </span>
               <Heart className="w-4 h-4 text-[#B58F8F]" />
             </div>

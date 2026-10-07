@@ -8,6 +8,7 @@ interface TypographySettingsSectionProps {
   onChange: (updated: TextStyling) => void;
   groomName: string;
   brideName: string;
+  onGlobalResetStyling?: () => void;
 }
 
 const HEADING_FONTS = [
@@ -65,6 +66,7 @@ export function TypographySettingsSection({
   onChange,
   groomName,
   brideName,
+  onGlobalResetStyling,
 }: TypographySettingsSectionProps) {
   const currentStyling: TextStyling = {
     headingFont: styling?.headingFont || "editorial-serif",
@@ -87,7 +89,7 @@ export function TypographySettingsSection({
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Header Banner */}
+      {/* Header Banner with Global Reset Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-[#F8F5EF] via-[#FAF8F5] to-[#F5EFE6] border border-[#C9B38C]/40 shadow-xs">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-xl bg-white border border-[#C9B38C]/50 flex items-center justify-center shadow-xs text-[#9E814D]">
@@ -103,24 +105,37 @@ export function TypographySettingsSection({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            onChange({
-              headingFont: "editorial-serif",
-              bodyFont: "sans",
-              fontSizeScale: "normal",
-              headingColor: "#202020",
-              accentColor: "#9E814D",
-              bodyColor: "#665E55",
-              isBoldHeading: false,
-              isItalicHeading: false,
-            })
-          }
-          className="text-xs px-3 py-1.5 rounded-lg border border-[#C9B38C]/50 text-[#7A5C28] hover:bg-white transition-colors shadow-2xs self-start sm:self-auto font-medium"
-        >
-          Reset to Royal Default
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                headingFont: "editorial-serif",
+                bodyFont: "sans",
+                fontSizeScale: "normal",
+                headingColor: "#202020",
+                accentColor: "#9E814D",
+                bodyColor: "#665E55",
+                isBoldHeading: false,
+                isItalicHeading: false,
+              })
+            }
+            className="text-xs px-3.5 py-1.5 rounded-lg border border-[#C9B38C]/60 text-[#7A5C28] hover:bg-white transition-colors shadow-2xs font-medium"
+          >
+            Reset Theme Colors
+          </button>
+
+          {onGlobalResetStyling && (
+            <button
+              type="button"
+              onClick={onGlobalResetStyling}
+              className="text-xs px-3.5 py-1.5 rounded-lg bg-stone-800 text-white hover:bg-black transition-colors shadow-2xs font-medium flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span>Reset All Text Styles Globally</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 1. Heading Font Selection Grid */}
