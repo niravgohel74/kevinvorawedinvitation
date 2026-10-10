@@ -34,9 +34,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const updated = await updateWeddingDetails(body);
+    const result = await updateWeddingDetails(body);
+    const updated = result.data || result;
+    const sync = result.sync;
     const timestamp = updated.updatedAt ? new Date(updated.updatedAt).getTime() : Date.now();
-    return NextResponse.json({ success: true, data: updated, version: timestamp });
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      version: timestamp,
+      blobSaved: sync?.blobSaved ?? true,
+      blobConfigured: sync?.isConfigured ?? true,
+      isStoreBlocked: sync?.isStoreBlocked ?? false,
+      blobError: sync?.blobError,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to update wedding details" }, { status: 500 });
   }

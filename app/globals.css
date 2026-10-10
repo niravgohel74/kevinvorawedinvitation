@@ -102,6 +102,11 @@ body {
   font-weight: var(--wedding-heading-weight, normal);
 }
 
+/* Dynamic heading color binding for editorial serif texts that aren't on dark backgrounds */
+.font-editorial-serif:not(.text-white):not([class*="text-white"]):not(.text-\[\#FFFFFF\]):not(.text-\[\#FFF9EF\]):not(.text-\[\#FFF2D8\]):not(.text-\[\#E8DEC8\]):not(.text-\[\#E5D3B3\]):not(.text-\[\#C9B38C\]):not(.text-\[\#D4AF37\]) {
+  color: var(--wedding-heading-color, #202020);
+}
+
 .font-display-serif {
   font-family: var(--font-playfair), Georgia, serif;
 }

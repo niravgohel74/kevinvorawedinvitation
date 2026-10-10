@@ -23,8 +23,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid story data format" }, { status: 400 });
     }
 
-    const updated = await updateStory(body);
-    return NextResponse.json({ success: true, data: updated });
+    const { data: updated, sync } = await updateStory(body);
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      blobSaved: sync?.blobSaved ?? true,
+      blobConfigured: sync?.isConfigured ?? true,
+      isStoreBlocked: sync?.isStoreBlocked ?? false,
+      blobError: sync?.blobError,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to update story" }, { status: 500 });
   }

@@ -19,8 +19,17 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const updated = await updateVenue(body);
-    return NextResponse.json({ success: true, data: updated });
+    const result = await updateVenue(body);
+    const updated = result.data || result;
+    const sync = result.sync;
+    return NextResponse.json({
+      success: true,
+      data: updated,
+      blobSaved: sync?.blobSaved ?? true,
+      blobConfigured: sync?.isConfigured ?? true,
+      isStoreBlocked: sync?.isStoreBlocked ?? false,
+      blobError: sync?.blobError,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err?.message || "Failed to update venue" }, { status: 500 });
   }

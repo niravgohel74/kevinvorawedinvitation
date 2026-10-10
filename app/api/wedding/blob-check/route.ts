@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { list } from "@vercel/blob";
-import { syncCurrentStoreToBlob, getBlobToken } from "@/lib/db";
+import { syncCurrentStoreToBlob, getBlobToken, checkBlobStoreHealth } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,38 +24,35 @@ export async function GET() {
     });
   }
 
+  const health = await checkBlobStoreHealth(token);
+
+  let blobs: any[] = [];
+  let storeBlobDetails: any = null;
+
   try {
     const listRes = await list({ limit: 100, token });
-    const storeBlob = listRes.blobs.find(
-      (b) => b.pathname === "wedding-data/store.json"
-    );
+    storeBlobDetails = listRes.blobs.find((b) => b.pathname === "wedding-data/store.json") || null;
+    blobs = listRes.blobs.map((b) => ({
+      pathname: b.pathname,
+      size: b.size,
+      uploadedAt: b.uploadedAt,
+      url: b.url,
+    }));
+  } catch {}
 
-    return NextResponse.json({
-      configured: true,
-      isVercel,
-      tokenPreview: `${token.slice(0, 15)}...${token.slice(-4)}`,
-      storeBlobFound: Boolean(storeBlob),
-      storeBlobDetails: storeBlob || null,
-      totalBlobsInStore: listRes.blobs.length,
-      blobs: listRes.blobs.map((b) => ({
-        pathname: b.pathname,
-        size: b.size,
-        uploadedAt: b.uploadedAt,
-        url: b.url,
-      })),
-    });
-  } catch (err: any) {
-    return NextResponse.json(
-      {
-        configured: true,
-        isVercel,
-        tokenPreview: `${token.slice(0, 15)}...${token.slice(-4)}`,
-        error: err?.message || String(err),
-        blobs: [],
-      },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    configured: true,
+    isVercel,
+    tokenPreview: health.tokenPreview,
+    isStoreBlocked: health.isStoreBlocked,
+    blockReason: health.blockReason || null,
+    canRead: health.canRead,
+    canWrite: health.canWrite,
+    storeBlobFound: health.storeBlobFound,
+    storeBlobDetails,
+    totalBlobsInStore: health.totalBlobsInStore,
+    blobs,
+  });
 }
 
 export async function POST() {
@@ -63,13 +60,18 @@ export async function POST() {
     const result = await syncCurrentStoreToBlob();
     return NextResponse.json({
       success: result.blobSaved,
+      isStoreBlocked: Boolean(result.isStoreBlocked),
+      error: result.blobError || null,
       result,
     });
   } catch (err: any) {
+    const msg = err?.message || String(err);
+    const isSuspended = msg.toLowerCase().includes("suspend") || msg.toLowerCase().includes("block") || err?.status === 403;
     return NextResponse.json(
       {
         success: false,
-        error: err?.message || String(err),
+        isStoreBlocked: isSuspended,
+        error: msg,
       },
       { status: 500 }
     );

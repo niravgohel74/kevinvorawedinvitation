@@ -160,11 +160,23 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
   const [cloudStatus, setCloudStatus] = useState<{
     configured: boolean;
     isVercel?: boolean;
+    tokenPreview?: string;
     storeBlobFound?: boolean;
+    isStoreBlocked?: boolean;
+    blockReason?: string;
+    canRead?: boolean;
+    canWrite?: boolean;
     totalBlobsInStore?: number;
     error?: string;
     message?: string;
   } | null>(null);
+
+  // Custom Blob token connect modal state
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [customTokenInput, setCustomTokenInput] = useState("");
+  const [isTestingToken, setIsTestingToken] = useState(false);
+  const [tokenError, setTokenError] = useState("");
+  const [tokenSuccess, setTokenSuccess] = useState("");
 
   const checkCloudStatus = React.useCallback(() => {
     fetch("/api/wedding/blob-check", { cache: "no-store" })
@@ -172,6 +184,42 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       .then((res) => setCloudStatus(res))
       .catch(() => setCloudStatus(null));
   }, []);
+
+  const handleConnectNewToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = customTokenInput.trim();
+    if (!token.startsWith("vercel_blob_rw_")) {
+      setTokenError("Token must start with 'vercel_blob_rw_' (copy from Vercel Storage settings)");
+      return;
+    }
+    setIsTestingToken(true);
+    setTokenError("");
+    setTokenSuccess("");
+    try {
+      const res = await fetch("/api/wedding/blob-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTokenSuccess("✅ Verified! Connected to new Vercel Blob store and synced wedding data.");
+        checkCloudStatus();
+        showToast("✅ Connected to new Vercel Blob store!");
+        setTimeout(() => {
+          setShowTokenModal(false);
+          setCustomTokenInput("");
+          setTokenSuccess("");
+        }, 1800);
+      } else {
+        setTokenError(json.error || "Failed to verify token with Vercel Blob.");
+      }
+    } catch (err: any) {
+      setTokenError(err?.message || "Network error while connecting token.");
+    } finally {
+      setIsTestingToken(false);
+    }
+  };
 
   // Multi-Device Real-Time Cloud Sync Engine:
   // Vercel Blob cloud storage is the single source of truth across all devices (laptop, mobile, tablet).
@@ -546,7 +594,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         currentVersionRef.current = newVer;
         lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
-        showToast("Wedding details successfully updated!");
+        if (resData.blobSaved === false || resData.isStoreBlocked) {
+          showToast(`⚠️ Saved in browser session, but CLOUD SYNC FAILED: ${resData.blobError || "Vercel Blob store is suspended/blocked."}`);
+          checkCloudStatus();
+        } else {
+          showToast("Wedding details & styling successfully updated & synced to cloud!");
+        }
       } else {
         showToast(resData.error || "Error saving wedding details.");
       }
@@ -578,7 +631,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         currentVersionRef.current = new Date(nowIso).getTime();
         lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
-        showToast("Couple profile updated successfully!");
+        if (resData.blobSaved === false || resData.isStoreBlocked) {
+          showToast(`⚠️ Saved in browser session, but CLOUD SYNC FAILED: ${resData.blobError || "Vercel Blob store is suspended/blocked."}`);
+          checkCloudStatus();
+        } else {
+          showToast("Couple profile updated successfully!");
+        }
       } else {
         showToast(resData.error || "Error updating couple info.");
       }
@@ -610,7 +668,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         currentVersionRef.current = new Date(nowIso).getTime();
         lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
-        showToast("Venue information saved!");
+        if (resData.blobSaved === false || resData.isStoreBlocked) {
+          showToast(`⚠️ Saved in browser session, but CLOUD SYNC FAILED: ${resData.blobError || "Vercel Blob store is suspended/blocked."}`);
+          checkCloudStatus();
+        } else {
+          showToast("Venue information saved!");
+        }
       } else {
         showToast(resData.error || "Error updating venue.");
       }
@@ -642,7 +705,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         currentVersionRef.current = new Date(nowIso).getTime();
         lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
-        showToast("Family blessings saved!");
+        if (resData.blobSaved === false || resData.isStoreBlocked) {
+          showToast(`⚠️ Saved in browser session, but CLOUD SYNC FAILED: ${resData.blobError || "Vercel Blob store is suspended/blocked."}`);
+          checkCloudStatus();
+        } else {
+          showToast("Family blessings saved!");
+        }
       } else {
         showToast(resData.error || "Error updating family blessings.");
       }
@@ -673,7 +741,12 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         currentVersionRef.current = new Date(nowIso).getTime();
         lastSaveTimeRef.current = Date.now();
         persistLocalBackup(nextData);
-        showToast("Section visibility preferences saved!");
+        if (resData.blobSaved === false || resData.isStoreBlocked) {
+          showToast(`⚠️ Saved in browser session, but CLOUD SYNC FAILED: ${resData.blobError || "Vercel Blob store is suspended/blocked."}`);
+          checkCloudStatus();
+        } else {
+          showToast("Section visibility preferences saved!");
+        }
       } else {
         showToast(resData?.error || "Error saving section visibility.");
       }
@@ -1416,25 +1489,33 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           )}
 
           {cloudStatus && (
-            <div
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-                cloudStatus.configured
+            <button
+              type="button"
+              onClick={() => setShowTokenModal(true)}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                cloudStatus.isStoreBlocked
+                  ? "bg-red-50 text-red-800 border-red-300 hover:bg-red-100 animate-pulse"
+                  : cloudStatus.configured
                   ? cloudStatus.storeBlobFound
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-blue-50 text-blue-800 border-blue-200"
-                  : "bg-amber-50 text-amber-800 border-amber-200"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
+                    : "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100"
+                  : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
               }`}
               title={
-                cloudStatus.configured
+                cloudStatus.isStoreBlocked
+                  ? "Vercel Blob store is suspended/blocked. Click to connect a new store token."
+                  : cloudStatus.configured
                   ? cloudStatus.storeBlobFound
-                    ? "Vercel Blob store connected and active (wedding-data/store.json exists)"
-                    : "Vercel Blob store connected. Click 'Sync All to Cloud' to upload initial data."
-                  : "Vercel Blob token missing in environment. Changes will save to local disk only."
+                    ? "Vercel Blob store connected and active. Click to manage."
+                    : "Vercel Blob store connected. Click to manage."
+                  : "Vercel Blob token missing. Click to connect."
               }
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  cloudStatus.configured
+                  cloudStatus.isStoreBlocked
+                    ? "bg-red-600"
+                    : cloudStatus.configured
                     ? cloudStatus.storeBlobFound
                       ? "bg-emerald-500 animate-pulse"
                       : "bg-blue-500"
@@ -1442,13 +1523,15 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                 }`}
               />
               <span>
-                {cloudStatus.configured
+                {cloudStatus.isStoreBlocked
+                  ? "Blob Blocked (Suspended)"
+                  : cloudStatus.configured
                   ? cloudStatus.storeBlobFound
                     ? "Blob Active"
                     : "Blob Connected (Empty)"
                   : "Local Mode"}
               </span>
-            </div>
+            </button>
           )}
         </div>
 
@@ -1522,6 +1605,52 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           </button>
         </div>
       </header>
+
+      {/* Cloud Persistence Alert Banner if Vercel Blob store is blocked/suspended */}
+      {cloudStatus?.isStoreBlocked && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-3.5 text-xs text-red-950 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl leading-none">🚫</span>
+              <div>
+                <h3 className="font-bold text-sm text-red-900 mb-0.5">
+                  Live Cloud Database Blocked (Vercel Store Suspended)
+                </h3>
+                <p className="text-red-800 leading-relaxed">
+                  Your Vercel Blob store ({cloudStatus.tokenPreview || "active store"}) has been suspended by Vercel because previous large media uploads exceeded the free monthly bandwidth.
+                  <br />
+                  <strong>Any styling or text changes saved now will not appear for live guests</strong> until storage is restored or reconnected.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="bg-white/90 border border-red-200 text-red-900 px-2 py-0.5 rounded text-[11px] font-medium">
+                    1. Go to Vercel Dashboard → Storage → Click your store → Click <strong>Unsuspend / Resume</strong>
+                  </span>
+                  <span className="bg-white/90 border border-red-200 text-red-900 px-2 py-0.5 rounded text-[11px] font-medium">
+                    2. OR Connect a fresh Blob store token below
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+              <button
+                type="button"
+                onClick={() => setShowTokenModal(true)}
+                className="px-3.5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium text-xs transition-colors shadow-xs"
+              >
+                Connect New Token
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncAllToCloud}
+                disabled={isSaving}
+                className="px-3 py-2 bg-white hover:bg-red-50 text-red-800 border border-red-300 rounded-lg font-medium text-xs transition-colors shadow-xs disabled:opacity-50"
+              >
+                {isSaving ? "Retrying..." : "Retry Cloud Sync"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Cloud Persistence Alert Banner if deployed on Vercel without connected Blob store */}
       {cloudStatus?.isVercel && !cloudStatus.configured && (
@@ -3784,6 +3913,99 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         onClose={() => setAudioTrimmerModal(false)}
         onSave={handleSaveTrimmedTrack}
       />
+
+      {/* Connect Vercel Blob Store Token Modal */}
+      {showTokenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#E9E1D5] animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
+              <div className="flex items-center gap-2 text-[#202020]">
+                <ShieldCheck className="w-5 h-5 text-[#9E814D]" />
+                <h3 className="font-editorial-serif text-2xl font-medium">Connect Vercel Blob Store</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTokenModal(false);
+                  setTokenError("");
+                  setTokenSuccess("");
+                }}
+                className="text-[#8C827A] hover:text-[#202020] text-xl leading-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConnectNewToken} className="mt-4 space-y-4">
+              <p className="text-xs text-[#665E55] leading-relaxed">
+                If your current store is suspended or you want to connect a fresh Vercel Blob store, copy the{" "}
+                <code className="bg-[#F8F5EF] px-1.5 py-0.5 rounded text-[11px] font-mono text-[#202020]">
+                  BLOB_READ_WRITE_TOKEN
+                </code>{" "}
+                from your Vercel Dashboard (Storage → Click Blob Store → Settings or .env.local tab) and paste it below.
+              </p>
+
+              {cloudStatus?.tokenPreview && (
+                <div className="p-2.5 rounded-lg bg-[#FAF8F5] border border-[#E9E1D5] text-[11px] text-[#665E55]">
+                  <span className="font-semibold text-[#202020]">Currently active token:</span>{" "}
+                  <code className="font-mono">{cloudStatus.tokenPreview}</code>
+                  {cloudStatus.isStoreBlocked && (
+                    <span className="ml-2 inline-block px-1.5 py-0.5 bg-red-100 text-red-800 rounded font-bold text-[10px]">
+                      SUSPENDED BY VERCEL
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-[#202020] mb-1">
+                  New Blob Read-Write Token:
+                </label>
+                <input
+                  type="text"
+                  value={customTokenInput}
+                  onChange={(e) => setCustomTokenInput(e.target.value)}
+                  placeholder="vercel_blob_rw_xxxxxxxx..."
+                  className="w-full px-3 py-2 text-xs font-mono border border-[#D5C9B8] rounded-lg focus:outline-none focus:border-[#9E814D] bg-[#FFFCF7]"
+                />
+              </div>
+
+              {tokenError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                  ⚠️ {tokenError}
+                </div>
+              )}
+
+              {tokenSuccess && (
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                  {tokenSuccess}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTokenModal(false);
+                    setTokenError("");
+                    setTokenSuccess("");
+                  }}
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#665E55] hover:bg-[#F8F5EF] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isTestingToken || !customTokenInput.trim()}
+                  className="px-5 py-2 rounded-lg text-xs font-medium bg-[#202020] hover:bg-[#38332E] text-white transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {isTestingToken ? "Verifying & Syncing..." : "Verify & Connect"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

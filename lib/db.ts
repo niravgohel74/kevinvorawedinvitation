@@ -147,7 +147,39 @@ function writeLocalBackup(data: WeddingData): void {
   }
 }
 
+let runtimeTokenOverride: string | null = null;
+
+export function setBlobTokenOverride(token: string | null): void {
+  runtimeTokenOverride = token ? token.trim() : null;
+  if (token) {
+    try {
+      if (fs.existsSync("/tmp")) {
+        fs.writeFileSync("/tmp/active_blob_token.txt", token.trim(), "utf-8");
+      }
+    } catch {}
+  } else {
+    try {
+      if (fs.existsSync("/tmp/active_blob_token.txt")) {
+        fs.unlinkSync("/tmp/active_blob_token.txt");
+      }
+    } catch {}
+  }
+}
+
 export function getBlobToken(): string | undefined {
+  if (runtimeTokenOverride && runtimeTokenOverride.startsWith("vercel_blob_rw_")) {
+    return runtimeTokenOverride;
+  }
+  try {
+    if (fs.existsSync("/tmp/active_blob_token.txt")) {
+      const fileToken = fs.readFileSync("/tmp/active_blob_token.txt", "utf-8").trim();
+      if (fileToken.startsWith("vercel_blob_rw_")) {
+        runtimeTokenOverride = fileToken;
+        return fileToken;
+      }
+    }
+  } catch {}
+
   // Static property accesses ensure Next.js / Webpack bundles these environment variables
   if (process.env.BLOB_READ_WRITE_TOKEN) {
     return process.env.BLOB_READ_WRITE_TOKEN;
@@ -295,12 +327,13 @@ async function readBlobStore(): Promise<any | null> {
 export interface BlobSyncResult {
   blobSaved: boolean;
   isConfigured: boolean;
+  isStoreBlocked?: boolean;
   blobError?: string;
   url?: string;
 }
 
-export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult> {
-  const token = getBlobToken();
+export async function writeBlobStore(data: WeddingData, overrideToken?: string): Promise<BlobSyncResult> {
+  const token = overrideToken || getBlobToken();
   if (!token) {
     console.warn("[Vercel Blob] No Blob token found in environment variables.");
     return {
@@ -337,11 +370,114 @@ export async function writeBlobStore(data: WeddingData): Promise<BlobSyncResult>
       console.log("[Vercel Blob] Successfully saved to public store:", blob.url);
       return { blobSaved: true, isConfigured: true, url: blob.url };
     } catch (pubErr: any) {
-      const errMsg = `Private write: ${privErr?.message || privErr} | Public write: ${pubErr?.message || pubErr}`;
+      const privMsg = privErr?.message || String(privErr);
+      const pubMsg = pubErr?.message || String(pubErr);
+      const isSuspended =
+        privMsg.toLowerCase().includes("suspend") ||
+        pubMsg.toLowerCase().includes("suspend") ||
+        privMsg.toLowerCase().includes("block") ||
+        pubMsg.toLowerCase().includes("block") ||
+        privErr?.status === 403 ||
+        pubErr?.status === 403;
+
+      const errMsg = isSuspended
+        ? "Vercel Blob store is suspended/blocked by Vercel. Please unsuspend it in Vercel Dashboard or connect a new store token."
+        : `Private write: ${privMsg} | Public write: ${pubMsg}`;
+
       console.error("[Vercel Blob] Both private and public writes failed:", errMsg);
-      return { blobSaved: false, isConfigured: true, blobError: errMsg };
+      return {
+        blobSaved: false,
+        isConfigured: true,
+        isStoreBlocked: isSuspended,
+        blobError: errMsg,
+      };
     }
   }
+}
+
+export interface BlobHealthCheck {
+  configured: boolean;
+  isVercel: boolean;
+  tokenPreview?: string;
+  isStoreBlocked: boolean;
+  blockReason?: string;
+  canRead: boolean;
+  canWrite: boolean;
+  storeBlobFound: boolean;
+  storeBlobSize?: number;
+  totalBlobsInStore: number;
+}
+
+export async function checkBlobStoreHealth(overrideToken?: string): Promise<BlobHealthCheck> {
+  const token = overrideToken || getBlobToken();
+  const isVercel = process.env.VERCEL === "1";
+  if (!token) {
+    return {
+      configured: false,
+      isVercel,
+      isStoreBlocked: false,
+      canRead: false,
+      canWrite: false,
+      storeBlobFound: false,
+      totalBlobsInStore: 0,
+    };
+  }
+
+  const tokenPreview = `${token.slice(0, 15)}...${token.slice(-4)}`;
+  let isStoreBlocked = false;
+  let blockReason: string | undefined = undefined;
+  let storeBlobFound = false;
+  let storeBlobSize: number | undefined = undefined;
+  let totalBlobs = 0;
+  let canRead = false;
+  let canWrite = false;
+
+  try {
+    const listRes = await list({ limit: 100, token });
+    totalBlobs = listRes.blobs.length;
+    const storeBlob = listRes.blobs.find((b) => b.pathname === BLOB_STORE_PATH);
+    if (storeBlob) {
+      storeBlobFound = true;
+      storeBlobSize = storeBlob.size;
+    }
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.toLowerCase().includes("suspend") || msg.toLowerCase().includes("block") || err?.status === 403) {
+      isStoreBlocked = true;
+      blockReason = msg;
+    }
+  }
+
+  // Test reading store.json
+  try {
+    const res = await get(BLOB_STORE_PATH, { access: "private", token, useCache: false });
+    if (res && res.statusCode === 200) {
+      canRead = true;
+    }
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.toLowerCase().includes("suspend") || msg.toLowerCase().includes("block") || err?.status === 403) {
+      isStoreBlocked = true;
+      blockReason = msg;
+    }
+  }
+
+  if (!isStoreBlocked && canRead) {
+    canWrite = true;
+  }
+
+  return {
+    configured: true,
+    isVercel,
+    tokenPreview,
+    isStoreBlocked,
+    blockReason,
+    canRead,
+    canWrite,
+    storeBlobFound,
+    storeBlobSize,
+    totalBlobsInStore: totalBlobs,
+  };
 }
 
 async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
@@ -441,7 +577,12 @@ export async function getWeddingData(forceFresh: boolean = false): Promise<Weddi
   return await ensureStore(forceFresh);
 }
 
-export async function updateWeddingDetails(updates: Partial<WeddingDetails>): Promise<WeddingDetails> {
+export type MutationResult<T> = T & {
+  data: T;
+  sync: BlobSyncResult;
+};
+
+export async function updateWeddingDetails(updates: Partial<WeddingDetails>): Promise<MutationResult<WeddingDetails>> {
   const data = await ensureStore(false);
   const nowIso = new Date().toISOString();
   data.wedding = {
@@ -449,28 +590,28 @@ export async function updateWeddingDetails(updates: Partial<WeddingDetails>): Pr
     ...updates,
     updatedAt: nowIso,
   };
-  await saveStore(data);
-  return data.wedding;
+  const sync = await saveStore(data);
+  return Object.assign({}, data.wedding, { data: data.wedding, sync });
 }
 
-export async function updateCoupleInfo(updates: Partial<CoupleInfo>): Promise<CoupleInfo> {
+export async function updateCoupleInfo(updates: Partial<CoupleInfo>): Promise<MutationResult<CoupleInfo>> {
   const data = await ensureStore(false);
   data.couple = {
     ...data.couple,
     ...updates,
   };
-  await saveStore(data);
-  return data.couple;
+  const sync = await saveStore(data);
+  return Object.assign({}, data.couple, { data: data.couple, sync });
 }
 
-export async function updateSectionVisibility(updates: Partial<SectionVisibility>): Promise<SectionVisibility> {
+export async function updateSectionVisibility(updates: Partial<SectionVisibility>): Promise<MutationResult<SectionVisibility>> {
   const data = await ensureStore(false);
   data.sectionVisibility = {
     ...data.sectionVisibility,
     ...updates,
   };
-  await saveStore(data);
-  return data.sectionVisibility;
+  const sync = await saveStore(data);
+  return Object.assign({}, data.sectionVisibility, { data: data.sectionVisibility, sync });
 }
 
 export async function getEvents(): Promise<WeddingEvent[]> {
@@ -478,7 +619,7 @@ export async function getEvents(): Promise<WeddingEvent[]> {
   return (data.events || []).sort((a, b) => a.order - b.order);
 }
 
-export async function createEvent(event: Omit<WeddingEvent, "id">): Promise<WeddingEvent> {
+export async function createEvent(event: Omit<WeddingEvent, "id">): Promise<MutationResult<WeddingEvent>> {
   const data = await ensureStore(false);
   const newEvent: WeddingEvent = {
     ...event,
@@ -486,27 +627,27 @@ export async function createEvent(event: Omit<WeddingEvent, "id">): Promise<Wedd
     order: event.order ?? (data.events.length + 1),
   };
   data.events.push(newEvent);
-  await saveStore(data);
-  return newEvent;
+  const sync = await saveStore(data);
+  return Object.assign({}, newEvent, { data: newEvent, sync });
 }
 
-export async function updateEvent(id: string, updates: Partial<WeddingEvent>): Promise<WeddingEvent> {
+export async function updateEvent(id: string, updates: Partial<WeddingEvent>): Promise<MutationResult<WeddingEvent>> {
   const data = await ensureStore(false);
   const idx = data.events.findIndex((e) => e.id === id);
   if (idx === -1) throw new Error("Event not found");
   data.events[idx] = { ...data.events[idx], ...updates };
-  await saveStore(data);
-  return data.events[idx];
+  const sync = await saveStore(data);
+  return Object.assign({}, data.events[idx], { data: data.events[idx], sync });
 }
 
-export async function deleteEvent(id: string): Promise<boolean> {
+export async function deleteEvent(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.events = data.events.filter((e) => e.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
-export async function reorderEvents(orderedIds: string[]): Promise<WeddingEvent[]> {
+export async function reorderEvents(orderedIds: string[]): Promise<{ data: WeddingEvent[]; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.events.forEach((evt) => {
     const idx = orderedIds.indexOf(evt.id);
@@ -515,29 +656,29 @@ export async function reorderEvents(orderedIds: string[]): Promise<WeddingEvent[
     }
   });
   data.events.sort((a, b) => a.order - b.order);
-  await saveStore(data);
-  return data.events;
+  const sync = await saveStore(data);
+  return { data: data.events, sync };
 }
 
-export async function updateStory(items: StoryItem[]): Promise<StoryItem[]> {
+export async function updateStory(items: StoryItem[]): Promise<{ data: StoryItem[]; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.story = items;
-  await saveStore(data);
-  return data.story;
+  const sync = await saveStore(data);
+  return { data: data.story, sync };
 }
 
-export async function updateTimeline(items: TimelineItem[]): Promise<TimelineItem[]> {
+export async function updateTimeline(items: TimelineItem[]): Promise<{ data: TimelineItem[]; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.timeline = items;
-  await saveStore(data);
-  return data.timeline;
+  const sync = await saveStore(data);
+  return { data: data.timeline, sync };
 }
 
-export async function updateVenue(updates: Partial<VenueInfo>): Promise<VenueInfo> {
+export async function updateVenue(updates: Partial<VenueInfo>): Promise<MutationResult<VenueInfo>> {
   const data = await ensureStore(false);
   data.venue = { ...data.venue, ...updates };
-  await saveStore(data);
-  return data.venue;
+  const sync = await saveStore(data);
+  return Object.assign({}, data.venue, { data: data.venue, sync });
 }
 
 export async function getGallery(): Promise<GalleryItem[]> {
@@ -545,7 +686,7 @@ export async function getGallery(): Promise<GalleryItem[]> {
   return (data.gallery || []).sort((a, b) => a.order - b.order);
 }
 
-export async function addGalleryItem(item: Omit<GalleryItem, "id">): Promise<GalleryItem> {
+export async function addGalleryItem(item: Omit<GalleryItem, "id">): Promise<MutationResult<GalleryItem>> {
   const data = await ensureStore(false);
   const newItem: GalleryItem = {
     ...item,
@@ -553,29 +694,29 @@ export async function addGalleryItem(item: Omit<GalleryItem, "id">): Promise<Gal
     order: item.order ?? (data.gallery.length + 1),
   };
   data.gallery.push(newItem);
-  await saveStore(data);
-  return newItem;
+  const sync = await saveStore(data);
+  return Object.assign({}, newItem, { data: newItem, sync });
 }
 
-export async function deleteGalleryItem(id: string): Promise<boolean> {
+export async function deleteGalleryItem(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.gallery = data.gallery.filter((g) => g.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
-export async function updateGallery(items: GalleryItem[]): Promise<GalleryItem[]> {
+export async function updateGallery(items: GalleryItem[]): Promise<{ data: GalleryItem[]; sync: BlobSyncResult }> {
   const data = await ensureStore(false);
   data.gallery = items;
-  await saveStore(data);
-  return data.gallery;
+  const sync = await saveStore(data);
+  return { data: data.gallery, sync };
 }
 
-export async function updateFamily(updates: Partial<FamilyInfo>): Promise<FamilyInfo> {
+export async function updateFamily(updates: Partial<FamilyInfo>): Promise<MutationResult<FamilyInfo>> {
   const data = await ensureStore(false);
   data.family = { ...data.family, ...updates };
-  await saveStore(data);
-  return data.family;
+  const sync = await saveStore(data);
+  return Object.assign({}, data.family, { data: data.family, sync });
 }
 
 export async function getRSVPs(): Promise<RSVPRecord[]> {
@@ -583,7 +724,7 @@ export async function getRSVPs(): Promise<RSVPRecord[]> {
   return data.rsvps || [];
 }
 
-export async function addRSVP(entry: Omit<RSVPRecord, "id" | "submittedAt">): Promise<RSVPRecord> {
+export async function addRSVP(entry: Omit<RSVPRecord, "id" | "submittedAt">): Promise<MutationResult<RSVPRecord>> {
   const data = await ensureStore(true);
   const newRsvp: RSVPRecord = {
     ...entry,
@@ -591,15 +732,15 @@ export async function addRSVP(entry: Omit<RSVPRecord, "id" | "submittedAt">): Pr
     submittedAt: new Date().toISOString(),
   };
   data.rsvps.unshift(newRsvp);
-  await saveStore(data);
-  return newRsvp;
+  const sync = await saveStore(data);
+  return Object.assign({}, newRsvp, { data: newRsvp, sync });
 }
 
-export async function deleteRSVP(id: string): Promise<boolean> {
+export async function deleteRSVP(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(true);
   data.rsvps = data.rsvps.filter((r) => r.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
 export async function getWishes(): Promise<GuestWishRecord[]> {
@@ -607,7 +748,7 @@ export async function getWishes(): Promise<GuestWishRecord[]> {
   return data.wishes || [];
 }
 
-export async function addWish(entry: { name: string; message: string }): Promise<GuestWishRecord> {
+export async function addWish(entry: { name: string; message: string }): Promise<MutationResult<GuestWishRecord>> {
   const data = await ensureStore(true);
   const newWish: GuestWishRecord = {
     id: `wish-${Date.now()}`,
@@ -617,24 +758,24 @@ export async function addWish(entry: { name: string; message: string }): Promise
     submittedAt: new Date().toISOString(),
   };
   data.wishes.unshift(newWish);
-  await saveStore(data);
-  return newWish;
+  const sync = await saveStore(data);
+  return Object.assign({}, newWish, { data: newWish, sync });
 }
 
-export async function updateWishStatus(id: string, status: "pending" | "approved" | "hidden"): Promise<GuestWishRecord> {
+export async function updateWishStatus(id: string, status: "pending" | "approved" | "hidden"): Promise<MutationResult<GuestWishRecord>> {
   const data = await ensureStore(true);
   const wish = data.wishes.find((w) => w.id === id);
   if (!wish) throw new Error("Wish not found");
   wish.status = status;
-  await saveStore(data);
-  return wish;
+  const sync = await saveStore(data);
+  return Object.assign({}, wish, { data: wish, sync });
 }
 
-export async function deleteWish(id: string): Promise<boolean> {
+export async function deleteWish(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(true);
   data.wishes = data.wishes.filter((w) => w.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
 // --- SHAGUN / MONEY COLLECTION REPOSITORY ---
@@ -643,7 +784,7 @@ export async function getShagun(): Promise<ShagunRecord[]> {
   return data.shagun || [];
 }
 
-export async function addShagun(entry: Omit<ShagunRecord, "id" | "date">): Promise<ShagunRecord> {
+export async function addShagun(entry: Omit<ShagunRecord, "id" | "date">): Promise<MutationResult<ShagunRecord>> {
   const data = await ensureStore(true);
   const newEntry: ShagunRecord = {
     ...entry,
@@ -652,26 +793,26 @@ export async function addShagun(entry: Omit<ShagunRecord, "id" | "date">): Promi
   };
   if (!data.shagun) data.shagun = [];
   data.shagun.unshift(newEntry);
-  await saveStore(data);
-  return newEntry;
+  const sync = await saveStore(data);
+  return Object.assign({}, newEntry, { data: newEntry, sync });
 }
 
-export async function updateShagun(id: string, updates: Partial<ShagunRecord>): Promise<ShagunRecord> {
+export async function updateShagun(id: string, updates: Partial<ShagunRecord>): Promise<MutationResult<ShagunRecord>> {
   const data = await ensureStore(true);
   if (!data.shagun) data.shagun = [];
   const idx = data.shagun.findIndex((s) => s.id === id);
   if (idx === -1) throw new Error("Shagun record not found");
   data.shagun[idx] = { ...data.shagun[idx], ...updates };
-  await saveStore(data);
-  return data.shagun[idx];
+  const sync = await saveStore(data);
+  return Object.assign({}, data.shagun[idx], { data: data.shagun[idx], sync });
 }
 
-export async function deleteShagun(id: string): Promise<boolean> {
+export async function deleteShagun(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(true);
   if (!data.shagun) data.shagun = [];
   data.shagun = data.shagun.filter((s) => s.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
 // --- MUSIC LIBRARY REPOSITORY ---
@@ -680,7 +821,7 @@ export async function getMusicLibrary(): Promise<MusicTrack[]> {
   return data.musicLibrary || [];
 }
 
-export async function addMusicTrack(track: Omit<MusicTrack, "id" | "addedAt">): Promise<MusicTrack> {
+export async function addMusicTrack(track: Omit<MusicTrack, "id" | "addedAt">): Promise<MutationResult<MusicTrack>> {
   const data = await ensureStore(true);
   if (!data.musicLibrary) data.musicLibrary = [];
   const newTrack: MusicTrack = {
@@ -693,11 +834,11 @@ export async function addMusicTrack(track: Omit<MusicTrack, "id" | "addedAt">): 
     data.wedding.ambientMusicUrl = newTrack.url;
   }
   data.musicLibrary.push(newTrack);
-  await saveStore(data);
-  return newTrack;
+  const sync = await saveStore(data);
+  return Object.assign({}, newTrack, { data: newTrack, sync });
 }
 
-export async function setActiveMusicTrack(id: string): Promise<MusicTrack> {
+export async function setActiveMusicTrack(id: string): Promise<MutationResult<MusicTrack>> {
   const data = await ensureStore(true);
   if (!data.musicLibrary) data.musicLibrary = [];
   let selectedTrack: MusicTrack | null = null;
@@ -711,11 +852,11 @@ export async function setActiveMusicTrack(id: string): Promise<MusicTrack> {
   });
   if (!selectedTrack) throw new Error("Track not found");
   data.wedding.ambientMusicUrl = (selectedTrack as MusicTrack).url;
-  await saveStore(data);
-  return selectedTrack;
+  const sync = await saveStore(data);
+  return Object.assign({}, selectedTrack, { data: selectedTrack, sync });
 }
 
-export async function updateMusicTrack(id: string, updates: Partial<MusicTrack>): Promise<MusicTrack> {
+export async function updateMusicTrack(id: string, updates: Partial<MusicTrack>): Promise<MutationResult<MusicTrack>> {
   const data = await ensureStore(true);
   if (!data.musicLibrary) data.musicLibrary = [];
   const idx = data.musicLibrary.findIndex((m) => m.id === id);
@@ -729,16 +870,16 @@ export async function updateMusicTrack(id: string, updates: Partial<MusicTrack>)
     }
     data.wedding.ambientMusicUrl = data.musicLibrary[idx].url;
   }
-  await saveStore(data);
-  return data.musicLibrary[idx];
+  const sync = await saveStore(data);
+  return Object.assign({}, data.musicLibrary[idx], { data: data.musicLibrary[idx], sync });
 }
 
-export async function deleteMusicTrack(id: string): Promise<boolean> {
+export async function deleteMusicTrack(id: string): Promise<{ success: boolean; sync: BlobSyncResult }> {
   const data = await ensureStore(true);
   if (!data.musicLibrary) data.musicLibrary = [];
   data.musicLibrary = data.musicLibrary.filter((m) => m.id !== id);
-  await saveStore(data);
-  return true;
+  const sync = await saveStore(data);
+  return { success: true, sync };
 }
 
 export async function restoreWeddingData(
