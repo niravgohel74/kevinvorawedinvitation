@@ -215,6 +215,115 @@ export function getBlobToken(): string | undefined {
   return undefined;
 }
 
+export interface UpstashConfig {
+  url: string;
+  token: string;
+}
+
+let runtimeUpstashConfig: UpstashConfig | null = null;
+
+export function setUpstashConfigOverride(config: UpstashConfig | null): void {
+  runtimeUpstashConfig = config
+    ? { url: config.url.trim().replace(/\/+$/, ""), token: config.token.trim() }
+    : null;
+  try {
+    if (fs.existsSync("/tmp")) {
+      if (runtimeUpstashConfig) {
+        fs.writeFileSync("/tmp/active_upstash_config.json", JSON.stringify(runtimeUpstashConfig), "utf-8");
+      } else if (fs.existsSync("/tmp/active_upstash_config.json")) {
+        fs.unlinkSync("/tmp/active_upstash_config.json");
+      }
+    }
+  } catch {}
+}
+
+export function getUpstashConfig(): UpstashConfig | null {
+  if (runtimeUpstashConfig?.url && runtimeUpstashConfig?.token) {
+    return runtimeUpstashConfig;
+  }
+  try {
+    if (fs.existsSync("/tmp/active_upstash_config.json")) {
+      const fileData = JSON.parse(fs.readFileSync("/tmp/active_upstash_config.json", "utf-8"));
+      if (fileData?.url && fileData?.token) {
+        runtimeUpstashConfig = {
+          url: fileData.url.trim().replace(/\/+$/, ""),
+          token: fileData.token.trim(),
+        };
+        return runtimeUpstashConfig;
+      }
+    }
+  } catch {}
+
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    (process.env as any).REDIS_REST_URL;
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    (process.env as any).REDIS_REST_TOKEN;
+
+  if (url && token) {
+    return { url: url.trim().replace(/\/+$/, ""), token: token.trim() };
+  }
+  return null;
+}
+
+export async function writeUpstash(
+  data: WeddingData,
+  overrideConfig?: UpstashConfig
+): Promise<{ success: boolean; error?: string }> {
+  const config = overrideConfig || getUpstashConfig();
+  if (!config) {
+    return { success: false, error: "Upstash Redis credentials not configured" };
+  }
+  try {
+    const rawJson = JSON.stringify(data);
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(["SET", "wedding_store", rawJson]),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { success: false, error: `Upstash HTTP ${res.status}: ${errText}` };
+    }
+    const resJson = await res.json();
+    if (resJson.error) {
+      return { success: false, error: resJson.error };
+    }
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to write to Upstash Redis" };
+  }
+}
+
+export async function readUpstash(overrideConfig?: UpstashConfig): Promise<WeddingData | null> {
+  const config = overrideConfig || getUpstashConfig();
+  if (!config) return null;
+  try {
+    const res = await fetch(config.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(["GET", "wedding_store"]),
+    });
+    if (!res.ok) return null;
+    const resJson = await res.json();
+    if (!resJson || resJson.result === null || resJson.result === undefined) return null;
+    const raw = typeof resJson.result === "string" ? JSON.parse(resJson.result) : resJson.result;
+    return deepMergeWeddingData(raw);
+  } catch (err) {
+    console.warn("Upstash read error:", err);
+    return null;
+  }
+}
+
 async function readStream(stream: any): Promise<string> {
   if (!stream) return "";
   if (typeof stream === "string") return stream;
@@ -330,6 +439,7 @@ export interface BlobSyncResult {
   isStoreBlocked?: boolean;
   blobError?: string;
   url?: string;
+  provider?: "upstash" | "blob" | "local";
 }
 
 export async function writeBlobStore(data: WeddingData, overrideToken?: string): Promise<BlobSyncResult> {
@@ -355,7 +465,7 @@ export async function writeBlobStore(data: WeddingData, overrideToken?: string):
       contentType: "application/json",
     });
     console.log("[Vercel Blob] Successfully saved to private store:", blob.url);
-    return { blobSaved: true, isConfigured: true, url: blob.url };
+    return { blobSaved: true, isConfigured: true, url: blob.url, provider: "blob" };
   } catch (privErr: any) {
     console.warn("[Vercel Blob] Private put failed, trying public access:", privErr?.message || privErr);
     // 2. Fall back to public access (if store was created as Public)
@@ -368,7 +478,7 @@ export async function writeBlobStore(data: WeddingData, overrideToken?: string):
         contentType: "application/json",
       });
       console.log("[Vercel Blob] Successfully saved to public store:", blob.url);
-      return { blobSaved: true, isConfigured: true, url: blob.url };
+      return { blobSaved: true, isConfigured: true, url: blob.url, provider: "blob" };
     } catch (pubErr: any) {
       const privMsg = privErr?.message || String(privErr);
       const pubMsg = pubErr?.message || String(pubErr);
@@ -381,7 +491,7 @@ export async function writeBlobStore(data: WeddingData, overrideToken?: string):
         pubErr?.status === 403;
 
       const errMsg = isSuspended
-        ? "Vercel Blob store is suspended/blocked by Vercel. Please unsuspend it in Vercel Dashboard or connect a new store token."
+        ? "Vercel Blob store is suspended/blocked by Vercel. Please unsuspend it in Vercel Dashboard or connect Upstash Redis."
         : `Private write: ${privMsg} | Public write: ${pubMsg}`;
 
       console.error("[Vercel Blob] Both private and public writes failed:", errMsg);
@@ -390,6 +500,7 @@ export async function writeBlobStore(data: WeddingData, overrideToken?: string):
         isConfigured: true,
         isStoreBlocked: isSuspended,
         blobError: errMsg,
+        provider: "blob",
       };
     }
   }
@@ -406,15 +517,38 @@ export interface BlobHealthCheck {
   storeBlobFound: boolean;
   storeBlobSize?: number;
   totalBlobsInStore: number;
+  upstashConfigured?: boolean;
+  upstashUrlPreview?: string;
+  activeProvider?: "upstash" | "blob" | "local" | "none";
 }
 
 export async function checkBlobStoreHealth(overrideToken?: string): Promise<BlobHealthCheck> {
-  const token = overrideToken || getBlobToken();
   const isVercel = process.env.VERCEL === "1";
+  const upstash = getUpstashConfig();
+
+  // If Upstash Redis is connected, health check immediately succeeds!
+  if (upstash) {
+    return {
+      configured: true,
+      isVercel,
+      upstashConfigured: true,
+      upstashUrlPreview: upstash.url.replace(/^https?:\/\//, "").slice(0, 25) + "...",
+      activeProvider: "upstash",
+      isStoreBlocked: false,
+      canRead: true,
+      canWrite: true,
+      storeBlobFound: true,
+      totalBlobsInStore: 1,
+    };
+  }
+
+  const token = overrideToken || getBlobToken();
   if (!token) {
     return {
       configured: false,
       isVercel,
+      upstashConfigured: false,
+      activeProvider: "none",
       isStoreBlocked: false,
       canRead: false,
       canWrite: false,
@@ -491,6 +625,8 @@ export async function checkBlobStoreHealth(overrideToken?: string): Promise<Blob
     storeBlobFound,
     storeBlobSize,
     totalBlobsInStore: totalBlobs,
+    upstashConfigured: false,
+    activeProvider: isStoreBlocked ? "none" : "blob",
   };
 }
 
@@ -502,7 +638,35 @@ async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
     return memoryCache;
   }
 
-  // 1. If Vercel Blob is configured (production or local with token)
+  // 1. If Upstash Redis is configured (Takes highest priority - immune to Vercel bandwidth limits)
+  const upstashConfig = getUpstashConfig();
+  if (upstashConfig) {
+    try {
+      const upstashData = await readUpstash(upstashConfig);
+      if (upstashData) {
+        const remoteTime = upstashData.wedding?.updatedAt
+          ? new Date(upstashData.wedding.updatedAt).getTime()
+          : 0;
+        const localCacheTime = memoryCache?.wedding?.updatedAt
+          ? new Date(memoryCache.wedding.updatedAt).getTime()
+          : 0;
+
+        if (!memoryCache || remoteTime >= localCacheTime) {
+          memoryCache = upstashData;
+          lastCacheTime = Date.now();
+          storeVersion = remoteTime || Date.now();
+          writeLocalBackup(upstashData);
+          return upstashData;
+        } else {
+          return memoryCache;
+        }
+      }
+    } catch (uErr: any) {
+      console.warn("Upstash read error:", uErr?.message || uErr);
+    }
+  }
+
+  // 2. If Vercel Blob is configured (production or local with token)
   if (hasBlobToken) {
     try {
       const remoteData = await readBlobStore();
@@ -537,7 +701,7 @@ async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
     return memoryCache;
   }
 
-  // 2. Fallback to local filesystem
+  // 3. Fallback to local filesystem
   const local = readLocalDisk();
   const merged = deepMergeWeddingData(local);
   memoryCache = merged;
@@ -550,6 +714,13 @@ async function ensureStore(forceFresh: boolean = false): Promise<WeddingData> {
 
 export async function syncCurrentStoreToBlob(): Promise<BlobSyncResult> {
   const current = await ensureStore(true);
+  const upstashConfig = getUpstashConfig();
+  if (upstashConfig) {
+    const upRes = await writeUpstash(current, upstashConfig);
+    if (upRes.success) {
+      return { blobSaved: true, isConfigured: true, provider: "upstash" };
+    }
+  }
   return await writeBlobStore(current);
 }
 
@@ -576,14 +747,38 @@ async function saveStore(data: WeddingData): Promise<BlobSyncResult> {
     revalidatePath("/admin");
   } catch {}
 
+  // 1. If Upstash Redis is configured, write to Upstash
+  const upstashConfig = getUpstashConfig();
+  if (upstashConfig) {
+    const upRes = await writeUpstash(merged, upstashConfig);
+    if (upRes.success) {
+      console.log("[Upstash Redis] Successfully saved to cloud database.");
+      // Optional background blob write
+      if (getBlobToken()) {
+        writeBlobStore(merged).catch(() => {});
+      }
+      return {
+        blobSaved: true,
+        isConfigured: true,
+        isStoreBlocked: false,
+        provider: "upstash",
+      };
+    } else {
+      console.error("[Upstash Redis] Save failed:", upRes.error);
+    }
+  }
+
+  // 2. Fallback: Vercel Blob
   const hasBlobToken = Boolean(getBlobToken());
   if (hasBlobToken) {
     return await writeBlobStore(merged);
   }
+
   return {
     blobSaved: false,
     isConfigured: false,
-    blobError: "BLOB_READ_WRITE_TOKEN is not defined in environment variables",
+    blobError: "No cloud database connected (Upstash Redis or Vercel Blob).",
+    provider: "local",
   };
 }
 

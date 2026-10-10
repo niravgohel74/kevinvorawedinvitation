@@ -52,6 +52,7 @@ import {
   Type,
   Palette,
   RotateCcw,
+  Database,
 } from "lucide-react";
 import { PublicInvitationView } from "@/components/invitation/PublicInvitationView";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
@@ -167,16 +168,23 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     canRead?: boolean;
     canWrite?: boolean;
     totalBlobsInStore?: number;
+    upstashConfigured?: boolean;
+    upstashUrlPreview?: string;
+    activeProvider?: string;
     error?: string;
     message?: string;
   } | null>(null);
 
-  // Custom Blob token connect modal state
+  // Cloud Database connect modal state
   const [showTokenModal, setShowTokenModal] = useState(false);
+  const [modalTab, setModalTab] = useState<"upstash" | "blob" | "backup">("upstash");
   const [customTokenInput, setCustomTokenInput] = useState("");
+  const [upstashUrlInput, setUpstashUrlInput] = useState("");
+  const [upstashTokenInput, setUpstashTokenInput] = useState("");
   const [isTestingToken, setIsTestingToken] = useState(false);
   const [tokenError, setTokenError] = useState("");
   const [tokenSuccess, setTokenSuccess] = useState("");
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
 
   const checkCloudStatus = React.useCallback(() => {
     fetch("/api/wedding/blob-check", { cache: "no-store" })
@@ -184,6 +192,42 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
       .then((res) => setCloudStatus(res))
       .catch(() => setCloudStatus(null));
   }, []);
+
+  const handleConnectUpstash = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = upstashUrlInput.trim();
+    const token = upstashTokenInput.trim();
+    if (!url || !token) {
+      setTokenError("Please enter both UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN");
+      return;
+    }
+    setIsTestingToken(true);
+    setTokenError("");
+    setTokenSuccess("");
+    try {
+      const res = await fetch("/api/wedding/blob-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: "upstash", url, token }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTokenSuccess("✅ Verified! Connected to Upstash Redis and synchronized all wedding data.");
+        checkCloudStatus();
+        showToast("✅ Upstash Redis Connected! Changes will now save permanently.");
+        setTimeout(() => {
+          setShowTokenModal(false);
+          setTokenSuccess("");
+        }, 1800);
+      } else {
+        setTokenError(json.error || "Failed to verify Upstash Redis credentials.");
+      }
+    } catch (err: any) {
+      setTokenError(err?.message || "Network error while connecting to Upstash.");
+    } finally {
+      setIsTestingToken(false);
+    }
+  };
 
   const handleConnectNewToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,6 +263,59 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
     } finally {
       setIsTestingToken(false);
     }
+  };
+
+  const handleDownloadBackup = () => {
+    try {
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `wedding_invitation_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast("📥 Wedding backup downloaded successfully!");
+    } catch {
+      showToast("Failed to download backup");
+    }
+  };
+
+  const handleUploadBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsRestoringBackup(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed.wedding && parsed.couple) {
+          setData(parsed);
+          persistLocalBackup(parsed);
+          const saveRes = await fetch("/api/wedding", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(parsed),
+          });
+          const resJson = await saveRes.json();
+          if (resJson.success) {
+            showToast("✅ Backup restored and saved to cloud successfully!");
+            setShowTokenModal(false);
+          } else {
+            showToast("Restored locally, but cloud sync failed.");
+          }
+        } else {
+          showToast("Invalid backup file format. Expected wedding data JSON.");
+        }
+      } catch {
+        showToast("Failed to parse backup JSON file");
+      } finally {
+        setIsRestoringBackup(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Multi-Device Real-Time Cloud Sync Engine:
@@ -1491,9 +1588,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
           {cloudStatus && (
             <button
               type="button"
-              onClick={() => setShowTokenModal(true)}
+              onClick={() => {
+                setModalTab(cloudStatus.upstashConfigured ? "upstash" : "upstash");
+                setShowTokenModal(true);
+              }}
               className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                cloudStatus.isStoreBlocked
+                cloudStatus.upstashConfigured
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                  : cloudStatus.isStoreBlocked
                   ? "bg-red-50 text-red-800 border-red-300 hover:bg-red-100 animate-pulse"
                   : cloudStatus.configured
                   ? cloudStatus.storeBlobFound
@@ -1501,19 +1603,13 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                     : "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100"
                   : "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
               }`}
-              title={
-                cloudStatus.isStoreBlocked
-                  ? "Vercel Blob store is suspended/blocked. Click to connect a new store token."
-                  : cloudStatus.configured
-                  ? cloudStatus.storeBlobFound
-                    ? "Vercel Blob store connected and active. Click to manage."
-                    : "Vercel Blob store connected. Click to manage."
-                  : "Vercel Blob token missing. Click to connect."
-              }
+              title="Click to manage cloud database connection (Upstash Redis / Vercel Blob / Backup)"
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  cloudStatus.isStoreBlocked
+                  cloudStatus.upstashConfigured
+                    ? "bg-emerald-500 animate-pulse"
+                    : cloudStatus.isStoreBlocked
                     ? "bg-red-600"
                     : cloudStatus.configured
                     ? cloudStatus.storeBlobFound
@@ -1523,12 +1619,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                 }`}
               />
               <span>
-                {cloudStatus.isStoreBlocked
-                  ? "Blob Blocked (Suspended)"
+                {cloudStatus.upstashConfigured
+                  ? "Upstash Active (Free)"
+                  : cloudStatus.isStoreBlocked
+                  ? "Storage Suspended (Fix Free)"
                   : cloudStatus.configured
                   ? cloudStatus.storeBlobFound
                     ? "Blob Active"
-                    : "Blob Connected (Empty)"
+                    : "Blob Connected"
                   : "Local Mode"}
               </span>
             </button>
@@ -1606,27 +1704,24 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         </div>
       </header>
 
-      {/* Cloud Persistence Alert Banner if Vercel Blob store is blocked/suspended */}
-      {cloudStatus?.isStoreBlocked && (
+      {/* Cloud Persistence Alert Banner if Vercel Blob store is blocked and Upstash is not active */}
+      {cloudStatus?.isStoreBlocked && !cloudStatus.upstashConfigured && (
         <div className="bg-red-50 border-b border-red-200 px-6 py-3.5 text-xs text-red-950 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <span className="text-2xl leading-none">🚫</span>
               <div>
                 <h3 className="font-bold text-sm text-red-900 mb-0.5">
-                  Live Cloud Database Blocked (Vercel Store Suspended)
+                  Vercel Blob Quota Reached (Fix 100% Free - No Pro Upgrade Needed)
                 </h3>
                 <p className="text-red-800 leading-relaxed">
-                  Your Vercel Blob store ({cloudStatus.tokenPreview || "active store"}) has been suspended by Vercel because previous large media uploads exceeded the free monthly bandwidth.
+                  Vercel locked Blob store creation because your Hobby team exceeded the monthly 10 GB bandwidth quota.
                   <br />
-                  <strong>Any styling or text changes saved now will not appear for live guests</strong> until storage is restored or reconnected.
+                  <strong>You do NOT need to upgrade to Pro.</strong> You can connect a free <strong>Upstash Redis</strong> database (10,000 requests/day, free forever, no credit card) in 60 seconds so your styling and text changes save permanently!
                 </p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <span className="bg-white/90 border border-red-200 text-red-900 px-2 py-0.5 rounded text-[11px] font-medium">
-                    1. Go to Vercel Dashboard → Storage → Click your store → Click <strong>Unsuspend / Resume</strong>
-                  </span>
-                  <span className="bg-white/90 border border-red-200 text-red-900 px-2 py-0.5 rounded text-[11px] font-medium">
-                    2. OR Connect a fresh Blob store token below
+                    Recommended Free Solution: Connect Upstash Redis
                   </span>
                 </div>
               </div>
@@ -1634,18 +1729,20 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
             <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
               <button
                 type="button"
-                onClick={() => setShowTokenModal(true)}
-                className="px-3.5 py-2 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium text-xs transition-colors shadow-xs"
+                onClick={() => {
+                  setModalTab("upstash");
+                  setShowTokenModal(true);
+                }}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-medium text-xs transition-colors shadow-xs"
               >
-                Connect New Token
+                Connect Free Database
               </button>
               <button
                 type="button"
-                onClick={handleSyncAllToCloud}
-                disabled={isSaving}
-                className="px-3 py-2 bg-white hover:bg-red-50 text-red-800 border border-red-300 rounded-lg font-medium text-xs transition-colors shadow-xs disabled:opacity-50"
+                onClick={handleDownloadBackup}
+                className="px-3 py-2 bg-white hover:bg-gray-50 text-[#202020] border border-gray-300 rounded-lg font-medium text-xs transition-colors shadow-xs"
               >
-                {isSaving ? "Retrying..." : "Retry Cloud Sync"}
+                Download Backup (.json)
               </button>
             </div>
           </div>
@@ -3914,14 +4011,14 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
         onSave={handleSaveTrimmedTrack}
       />
 
-      {/* Connect Vercel Blob Store Token Modal */}
+      {/* Connect Free Cloud Database Modal */}
       {showTokenModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#E9E1D5] animate-scale-in">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-[#E9E1D5] animate-scale-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#F0EBE1]">
-              <div className="flex items-center gap-2 text-[#202020]">
-                <ShieldCheck className="w-5 h-5 text-[#9E814D]" />
-                <h3 className="font-editorial-serif text-2xl font-medium">Connect Vercel Blob Store</h3>
+              <div className="flex items-center gap-2.5 text-[#202020]">
+                <Database className="w-5 h-5 text-emerald-700" />
+                <h3 className="font-editorial-serif text-2xl font-medium">Connect Cloud Database</h3>
               </div>
               <button
                 type="button"
@@ -3930,79 +4027,279 @@ export function AdminDashboard({ initialData, adminUsername }: AdminDashboardPro
                   setTokenError("");
                   setTokenSuccess("");
                 }}
-                className="text-[#8C827A] hover:text-[#202020] text-xl leading-none p-1"
+                className="text-[#8C827A] hover:text-[#202020] text-xl leading-none p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleConnectNewToken} className="mt-4 space-y-4">
-              <p className="text-xs text-[#665E55] leading-relaxed">
-                If your current store is suspended or you want to connect a fresh Vercel Blob store, copy the{" "}
-                <code className="bg-[#F8F5EF] px-1.5 py-0.5 rounded text-[11px] font-mono text-[#202020]">
-                  BLOB_READ_WRITE_TOKEN
-                </code>{" "}
-                from your Vercel Dashboard (Storage → Click Blob Store → Settings or .env.local tab) and paste it below.
-              </p>
+            {/* Tab selector */}
+            <div className="flex items-center gap-2 mt-4 p-1 bg-[#F5F2EB] rounded-xl text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTab("upstash");
+                  setTokenError("");
+                  setTokenSuccess("");
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modalTab === "upstash"
+                    ? "bg-white text-emerald-800 shadow-xs font-semibold"
+                    : "text-[#665E55] hover:text-[#202020]"
+                }`}
+              >
+                <span>Upstash Redis</span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                  Free Forever
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTab("blob");
+                  setTokenError("");
+                  setTokenSuccess("");
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modalTab === "blob"
+                    ? "bg-white text-[#202020] shadow-xs font-semibold"
+                    : "text-[#665E55] hover:text-[#202020]"
+                }`}
+              >
+                <span>Vercel Blob</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTab("backup");
+                  setTokenError("");
+                  setTokenSuccess("");
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modalTab === "backup"
+                    ? "bg-white text-[#202020] shadow-xs font-semibold"
+                    : "text-[#665E55] hover:text-[#202020]"
+                }`}
+              >
+                <span>JSON Backup</span>
+              </button>
+            </div>
 
-              {cloudStatus?.tokenPreview && (
-                <div className="p-2.5 rounded-lg bg-[#FAF8F5] border border-[#E9E1D5] text-[11px] text-[#665E55]">
-                  <span className="font-semibold text-[#202020]">Currently active token:</span>{" "}
-                  <code className="font-mono">{cloudStatus.tokenPreview}</code>
-                  {cloudStatus.isStoreBlocked && (
-                    <span className="ml-2 inline-block px-1.5 py-0.5 bg-red-100 text-red-800 rounded font-bold text-[10px]">
-                      SUSPENDED BY VERCEL
-                    </span>
-                  )}
+            {/* TAB 1: UPSTASH REDIS (RECOMMENDED) */}
+            {modalTab === "upstash" && (
+              <form onSubmit={handleConnectUpstash} className="mt-4 space-y-4">
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 leading-relaxed">
+                  <div className="font-bold text-emerald-900 mb-1 flex items-center gap-1.5">
+                    <span>🌟 Why Upstash Redis?</span>
+                  </div>
+                  Vercel blocks creating new Blob stores when your Hobby team reaches 10 GB bandwidth.
+                  <strong className="text-emerald-900"> Upstash Redis is 100% free forever</strong> (10,000 commands/day, 256MB storage, no credit card required) and completely bypasses Vercel’s limits!
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-[#202020] mb-1">
-                  New Blob Read-Write Token:
-                </label>
-                <input
-                  type="text"
-                  value={customTokenInput}
-                  onChange={(e) => setCustomTokenInput(e.target.value)}
-                  placeholder="vercel_blob_rw_xxxxxxxx..."
-                  className="w-full px-3 py-2 text-xs font-mono border border-[#D5C9B8] rounded-lg focus:outline-none focus:border-[#9E814D] bg-[#FFFCF7]"
-                />
+                <div className="bg-[#FAF8F5] border border-[#E9E1D5] rounded-xl p-3 text-xs text-[#5A524A] space-y-2">
+                  <div className="font-bold text-[#202020]">1-Minute Free Setup:</div>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://console.upstash.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-700 underline font-semibold inline-flex items-center gap-0.5"
+                      >
+                        console.upstash.com <ExternalLink className="w-2.5 h-2.5" />
+                      </a>{" "}
+                      and click <strong>Continue with GitHub</strong>.
+                    </li>
+                    <li>Click <strong>Create Database</strong> → Name: <code className="bg-white px-1 py-0.5 rounded border border-[#E0D8CB] font-mono">wedding</code> → Choose Regional free tier.</li>
+                    <li>Scroll down to the <strong>REST API</strong> section and select the <strong>.env</strong> tab.</li>
+                    <li>Copy and paste the URL and Token below:</li>
+                  </ol>
+                </div>
+
+                {cloudStatus?.upstashConfigured && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 font-medium">
+                    ✅ Upstash Redis is currently active ({cloudStatus.upstashUrlPreview || "Connected"}).
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#202020] mb-1">
+                    UPSTASH_REDIS_REST_URL:
+                  </label>
+                  <input
+                    type="text"
+                    value={upstashUrlInput}
+                    onChange={(e) => setUpstashUrlInput(e.target.value)}
+                    placeholder="https://us1-clean-example.upstash.io"
+                    className="w-full px-3 py-2 text-xs font-mono border border-[#D5C9B8] rounded-lg focus:outline-none focus:border-emerald-600 bg-[#FFFCF7]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#202020] mb-1">
+                    UPSTASH_REDIS_REST_TOKEN:
+                  </label>
+                  <input
+                    type="password"
+                    value={upstashTokenInput}
+                    onChange={(e) => setUpstashTokenInput(e.target.value)}
+                    placeholder="AX...xxxxxxxxxxxxxxxx..."
+                    className="w-full px-3 py-2 text-xs font-mono border border-[#D5C9B8] rounded-lg focus:outline-none focus:border-emerald-600 bg-[#FFFCF7]"
+                  />
+                </div>
+
+                {tokenError && (
+                  <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                    ⚠️ {tokenError}
+                  </div>
+                )}
+
+                {tokenSuccess && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium">
+                    {tokenSuccess}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenModal(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-[#665E55] hover:bg-[#F8F5EF] transition-colors"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isTestingToken || !upstashUrlInput.trim() || !upstashTokenInput.trim()}
+                    className="px-5 py-2 rounded-lg text-xs font-medium bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {isTestingToken ? "Verifying & Syncing..." : "Verify & Connect Upstash"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* TAB 2: VERCEL BLOB */}
+            {modalTab === "blob" && (
+              <form onSubmit={handleConnectNewToken} className="mt-4 space-y-4">
+                <p className="text-xs text-[#665E55] leading-relaxed">
+                  If you have another active Vercel Blob store, copy its{" "}
+                  <code className="bg-[#F8F5EF] px-1.5 py-0.5 rounded text-[11px] font-mono text-[#202020]">
+                    BLOB_READ_WRITE_TOKEN
+                  </code>{" "}
+                  from Vercel Dashboard and paste it below.
+                </p>
+
+                {cloudStatus?.tokenPreview && (
+                  <div className="p-2.5 rounded-lg bg-[#FAF8F5] border border-[#E9E1D5] text-[11px] text-[#665E55]">
+                    <span className="font-semibold text-[#202020]">Currently active token:</span>{" "}
+                    <code className="font-mono">{cloudStatus.tokenPreview}</code>
+                    {cloudStatus.isStoreBlocked && (
+                      <span className="ml-2 inline-block px-1.5 py-0.5 bg-red-100 text-red-800 rounded font-bold text-[10px]">
+                        SUSPENDED (QUOTA REACHED)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#202020] mb-1">
+                    Blob Read-Write Token:
+                  </label>
+                  <input
+                    type="text"
+                    value={customTokenInput}
+                    onChange={(e) => setCustomTokenInput(e.target.value)}
+                    placeholder="vercel_blob_rw_xxxxxxxx..."
+                    className="w-full px-3 py-2 text-xs font-mono border border-[#D5C9B8] rounded-lg focus:outline-none focus:border-[#9E814D] bg-[#FFFCF7]"
+                  />
+                </div>
+
+                {tokenError && (
+                  <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
+                    ⚠️ {tokenError}
+                  </div>
+                )}
+
+                {tokenSuccess && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+                    {tokenSuccess}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenModal(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-[#665E55] hover:bg-[#F8F5EF] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isTestingToken || !customTokenInput.trim()}
+                    className="px-5 py-2 rounded-lg text-xs font-medium bg-[#202020] hover:bg-[#38332E] text-white transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {isTestingToken ? "Verifying..." : "Verify & Connect Blob"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* TAB 3: BACKUP & RESTORE */}
+            {modalTab === "backup" && (
+              <div className="mt-4 space-y-4">
+                <p className="text-xs text-[#665E55] leading-relaxed">
+                  Export your full wedding invitation content, styling, events, and family blessings as a JSON backup file to your computer at any time, or restore from a previous file.
+                </p>
+
+                <div className="p-4 rounded-xl border border-[#E9E1D5] bg-[#FAF8F5] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-[#202020]">Download Complete Backup</div>
+                      <div className="text-[11px] text-[#8C847B]">Saves a copy of all current settings to your laptop</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDownloadBackup}
+                      className="px-3.5 py-2 bg-[#202020] hover:bg-[#38332E] text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download .json</span>
+                    </button>
+                  </div>
+
+                  <div className="border-t border-[#EAE3D6] pt-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-semibold text-[#202020]">Restore from Backup File</div>
+                      <div className="text-[11px] text-[#8C847B]">Upload a previously downloaded JSON backup</div>
+                    </div>
+                    <label className="px-3.5 py-2 bg-white border border-[#D5C9B8] hover:bg-[#F8F5EF] text-[#202020] rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer">
+                      <Upload className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Restore .json</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleUploadBackup}
+                        disabled={isRestoringBackup}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenModal(false)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium bg-[#202020] text-white hover:bg-[#38332E]"
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
-
-              {tokenError && (
-                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800">
-                  ⚠️ {tokenError}
-                </div>
-              )}
-
-              {tokenSuccess && (
-                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
-                  {tokenSuccess}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2.5 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowTokenModal(false);
-                    setTokenError("");
-                    setTokenSuccess("");
-                  }}
-                  className="px-4 py-2 rounded-lg text-xs font-medium text-[#665E55] hover:bg-[#F8F5EF] transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isTestingToken || !customTokenInput.trim()}
-                  className="px-5 py-2 rounded-lg text-xs font-medium bg-[#202020] hover:bg-[#38332E] text-white transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {isTestingToken ? "Verifying & Syncing..." : "Verify & Connect"}
-                </button>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}

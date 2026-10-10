@@ -62,6 +62,12 @@ export async function GET(req: NextRequest) {
     const response = await fetch(targetUrl, { headers });
 
     if (!response.ok && response.status !== 206) {
+      // If Vercel Blob returns 403 Forbidden because store is suspended, redirect to fallback asset
+      if (response.status === 403 && parsedUrl.hostname.includes("blob.vercel-storage.com")) {
+        console.warn("[Media Proxy] Upstream Blob suspended (403), redirecting to fallback asset.");
+        return NextResponse.redirect(new URL("/images/hero-wedding.jpg", req.url), 307);
+      }
+
       return NextResponse.json(
         { success: false, error: `Failed to fetch remote media (${response.status})` },
         { status: response.status }
