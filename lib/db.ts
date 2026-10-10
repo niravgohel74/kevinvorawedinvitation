@@ -456,9 +456,23 @@ export async function checkBlobStoreHealth(overrideToken?: string): Promise<Blob
     }
   } catch (err: any) {
     const msg = err?.message || String(err);
-    if (msg.toLowerCase().includes("suspend") || msg.toLowerCase().includes("block") || err?.status === 403) {
+    if (
+      msg.toLowerCase().includes("suspend") ||
+      msg.toLowerCase().includes("block") ||
+      msg.toLowerCase().includes("forbidden") ||
+      msg.includes("403") ||
+      err?.status === 403
+    ) {
       isStoreBlocked = true;
       blockReason = msg;
+    }
+  }
+
+  // If wedding-data/store.json exists in store but reading fails (e.g. 403), mark store as blocked
+  if (storeBlobFound && !canRead) {
+    isStoreBlocked = true;
+    if (!blockReason) {
+      blockReason = "Vercel Blob store is suspended/blocked by Vercel (HTTP 403 Forbidden).";
     }
   }
 
